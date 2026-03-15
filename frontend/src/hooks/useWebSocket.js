@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { APP_CONSTANTS } from '../constants'
 
 export function useWebSocket(onMessage) {
   const wsRef = useRef(null)
@@ -18,7 +19,7 @@ export function useWebSocket(onMessage) {
     }
     ws.onclose = () => {
       onMessageRef.current({ type: 'ws_close' })
-      reconnectTimer.current = setTimeout(connect, 2000)
+      reconnectTimer.current = setTimeout(connect, APP_CONSTANTS.WS_RECONNECT_DELAY_MS)
     }
     ws.onerror = () => ws.close()
   }, [])

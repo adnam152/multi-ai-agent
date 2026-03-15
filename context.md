@@ -5,176 +5,148 @@
 
 ## Project tổng quan
 
-**Brain OS** — hệ thống AI orchestration chạy hoàn toàn local trên máy Windows của Nam.
+**Brain OS** là hệ thống AI orchestration chạy local.
 
-**Orchestrator**: GitHub Copilot (thay Groq/Ollama) — proxy qua `copilot-api` local tại `http://localhost:4141`.
-Không cần Ollama. Brain dùng Copilot Pro (đã có sẵn) để routing + tool calling + chat.
+- Orchestrator: GitHub Copilot qua `copilot-api` tại `http://localhost:4141`
+- Không cần Ollama
+- Kiến trúc hiện tại: tách `backend/` và `frontend/`
 
 ---
 
-## Stack & Files
+## Cấu trúc hiện tại
 
-```
-brain-os/
-├── server.js            # Express + WebSocket, port 3333
-├── seed-context.js      # Inject initial project knowledge vào brain memory
-├── package.json         # express, ws, node-telegram-bot-api
-├── src/
-│   ├── brain.js         # Copilot orchestrator + Tool Calling loop
-│   ├── tools.js         # 14 tools (đọc/ghi file, HTTP, web search, v.v.)
-│   ├── memory.js        # Prompt Assembler: score context (recency 50% + keyword 40% + role 10%)
-│   ├── agents.js        # CRUD agents + skills/context per-agent + 5 providers
-│   ├── self-learn.js    # Tự học từ lỗi + corrections
-│   ├── logger.js        # Realtime log broadcast qua WebSocket
-│   └── telegram.js      # Telegram bot polling
-├── public/
-│   └── index.html       # SPA: Chat / Agents / Telegram / Logs
-└── data/                # memory.json, agents.json, logs.json, lessons.json
+```text
+multi-ai-agent/
+├── backend/
+│   ├── server.js
+│   ├── seed-context.js
+│   ├── src/
+│   │   ├── brain.js
+│   │   ├── tools.js
+│   │   ├── memory.js
+│   │   ├── agents.js
+│   │   ├── self-learn.js
+│   │   ├── logger.js
+│   │   ├── telegram.js
+│   │   ├── db.js
+│   │   └── constants.js
+│   └── data/                  # file fallback khi không dùng Supabase
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── constants.js
+│   │   ├── hooks/useWebSocket.js
+│   │   └── components/*
+│   └── dist/                  # build output được backend serve
+├── .env
+├── .env.example
+├── README.md
+└── package.json
 ```
 
-Khởi động:
+---
+
+## Cách chạy
+
 ```bash
-npx copilot-api@latest start   # bắt buộc (giữ chạy)
-node server.js [--port 3333] [--model gpt-4.1-mini]
+# 1) Copilot proxy
+npx copilot-api@latest start
+
+# 2) Install deps cho 2 app
+npm run install:all
+
+# 3) Seed context (optional)
+node backend/seed-context.js
+
+# 4) Start backend (serve cả frontend dist)
+npm run start
+# hoặc custom port
+node backend/server.js --port 3399
 ```
 
 ---
 
-## GitHub Copilot Provider
+## Storage model
 
-Brain OS dùng **copilot-api** (ericc-ch/copilot-api) làm local proxy:
-- Expose OpenAI-compatible endpoint: `http://localhost:4141`
-- Auth: GitHub device flow (1 lần): `npx copilot-api@latest auth`
-- Không cần API key thêm — dùng Copilot Pro subscription
+Hiện tại là mô hình **DB-first, file-fallback**:
 
-### Setup lần đầu
-```bash
-npm install -g copilot-api    # hoặc dùng npx
-copilot-api auth              # đăng nhập GitHub
-copilot-api start             # giữ chạy (cổng 4141)
-```
+- Nếu có `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`:
+  - đọc/ghi qua Supabase tables (`agents`, `messages`, `summaries`, `lessons`, `logs`, `config`)
+- Nếu không có DB hoặc DB lỗi:
+  - fallback sang JSON file trong `backend/data/`
 
-### Models Copilot Pro
-
-| Model | Quota | Ghi chú |
-|-------|-------|---------|
-| `gpt-4.1-mini` | Free (unlimited) | Mặc định cho Brain |
-| `gpt-4o-mini` | Free (unlimited) | Nhanh |
-| `gemini-2.0-flash` | Free (unlimited) | Google |
-| `gpt-4.1` | x1 premium | Balanced |
-| `gpt-4o` | x1 premium | |
-| `claude-sonnet-4.5` | x1 premium | Claude |
-| `claude-haiku-3.5` | x1 premium | Claude nhanh |
-| `o1-mini` | x3 premium | Reasoning |
-| `o3-mini` | x3 premium | Reasoning mạnh |
+File fallback:
+- `backend/data/agents.json`
+- `backend/data/memory.json`
+- `backend/data/summaries.json`
+- `backend/data/lessons.json`
+- `backend/data/logs.json`
+- `backend/data/config.json`
 
 ---
 
-## Agents System (nâng cấp)
+## Memory & token budgets
 
-Mỗi agent có:
-- `provider`: copilot | claude | gemini | openrouter | openai
-- `model`: model name
-- `systemPrompt`: prompt chính
-- `skills[]`: danh sách instructions/skills riêng
-- `contextNotes`: notes tích lũy (tự update sau mỗi reply)
-- `autoUpdateContext`: bật thì tự update contextNotes
+Các limit vận hành đã gom vào `backend/src/constants.js`:
 
-### Providers
+- Brain token budget: `BRAIN_CONSTANTS.TOKEN_BUDGET` (4000)
+- Agent token budget: `AGENT_CONSTANTS.TOKEN_BUDGET` (3000)
+- Memory default token budget: `MEMORY_CONSTANTS.DEFAULT_TOKEN_BUDGET` (3000)
+- HTTP text preview length: `TOOL_CONSTANTS.HTTP_TEXT_PREVIEW_LENGTH` (10000)
 
-| Provider | API Key | Endpoint |
-|----------|---------|----------|
-| copilot | ❌ (dùng copilot-api) | localhost:4141 |
-| claude | ANTHROPIC_API_KEY | api.anthropic.com |
-| gemini | GEMINI_API_KEY | generativelanguage.googleapis.com |
-| openrouter | OPENROUTER_API_KEY | openrouter.ai |
-| openai | OPENAI_API_KEY | api.openai.com |
-
-### Default Agents
-
-| Agent | Provider | Model |
-|-------|----------|-------|
-| Dev Agent | copilot | gpt-4.1 |
-| Search Agent | gemini | gemini-2.0-flash |
+Mục tiêu: không hardcode magic number rải rác nữa.
 
 ---
 
-## Tools (14 tools)
+## API chính
 
-| Tool | Mô tả |
-|------|-------|
-| `get_current_time` | Thời gian hiện tại VN |
-| `list_agents` | Liệt kê agents + status |
-| `get_system_status` | CPU, RAM, uptime |
-| `call_agent` | Gọi agent chuyên biệt |
-| `manage_agent` | Bật/tắt agent |
-| `get_memory_stats` | Thống kê memory |
-| `run_command` | Shell (whitelist read-only) |
-| `run_pipeline` | Parallel/sequential agents |
-| `save_lesson` | Lưu bài học self-learn |
-| `send_telegram` | Gửi Telegram chủ động |
-| `read_file` | Đọc file local (whitelist) |
-| `write_file` | Ghi file local (whitelist) |
-| `http_request` | HTTP GET/POST external API |
-| `search_web` | DuckDuckGo search |
+- `GET /api/status`
+- `POST /api/brain/check`
+- `POST /api/brain/model`
+- `GET/POST/PUT/DELETE /api/agents...`
+- `GET/DELETE /api/memory`, `POST /api/memory/summarize`
+- `GET /api/tools`
+- `GET/DELETE /api/logs`
+- `GET/DELETE /api/lessons`
+- `GET /api/telegram`
+- `GET /api/telegram/messages`
+- `POST /api/telegram/connect`
+- `POST /api/telegram/owner`
+- `POST /api/telegram/send`
+- `POST /api/telegram/disconnect`
 
 ---
 
-## Memory & Context
+## WebSocket events
 
-Prompt Assembler (memory.js):
-- Score = 0.5×recency + 0.4×keyword + 0.1×role
-- Token budget: 4000 (tăng từ 3000)
-- Always keep last 6 messages
-- Mỗi agent có memory riêng (phân tách theo agentId)
+Client -> Server:
+- `chat`
+- `clear_chat`
+- `load_history`
 
----
-
-## API Endpoints
-
-```
-GET  /api/status              — brain + system status
-POST /api/brain/check         — kiểm tra copilot-api
-POST /api/brain/model         — đổi model
-GET  /api/agents              — danh sách agents
-POST /api/agents              — tạo agent
-PUT  /api/agents/:id          — sửa agent
-GET  /api/agents/:id/skills   — xem skills
-PUT  /api/agents/:id/skills   — cập nhật skills
-GET  /api/agents/:id/context  — xem context notes
-PUT  /api/agents/:id/context  — cập nhật context notes
-DELETE /api/agents/:id/context — xóa context notes
-GET  /api/tools               — danh sách tools
-GET  /api/memory              — chat history
-GET  /api/lessons             — self-learn lessons
-GET  /api/logs                — system logs
-```
+Server -> Client:
+- `chat_token`
+- `chat_done`
+- `chat_error`
+- `tool_call`
+- `log`
+- `telegram_status`
+- `telegram_message`
+- `chat_cleared`
+- `history`
 
 ---
 
-## Về Nam (user)
+## Lưu ý hiện trạng
 
-- Mục tiêu: AI content pipeline tự động 24/7 (YouTube/TikTok faceless + affiliate marketing)
-- Hardware: Windows (Brain OS) + Linux 8GB RAM/256GB (media processing)
-- API: Claude Pro, Gemini Pro, **Copilot Pro** (orchestrator chính)
-- Kỹ năng: Node.js, Linux, API integration, troubleshooting sâu
-- Phong cách: CLI, hands-on, không thích config thủ công
-
----
-
-## Roadmap Brain OS
-
-- ✅ Phase 1: Core (chat + memory + agents + telegram + logs + web UI)
-- ✅ Phase 2A: Tool Calling (14 tools — file I/O, HTTP, web search)
-- ✅ Phase 2B: Copilot orchestrator (thay Groq/Ollama — free, mạnh hơn)
-- ✅ Phase 2C: Per-agent skills & context (flexible agents)
-- ⬜ Phase 3: Self-improvement (brain đọc error log, tự update system prompt)
-- ⬜ Phase 4: Content pipeline (kết nối workflow tạo video tự động)
-- ⬜ Phase 5: Multi-agent (nhiều brain song song, chuyên biệt)
+- Frontend build có thể fail nếu chưa cài deps trong `frontend/node_modules`.
+- `EADDRINUSE` xuất hiện nếu cổng 3333 đang bị chiếm; đổi cổng qua `--port`.
+- Telegram token hiện lưu qua flow API/UI (`/api/telegram/connect`), không lấy trực tiếp từ env ở runtime.
 
 ---
 
 ## Cách dùng file này
 
 Paste nội dung file này vào đầu conversation mới:
-> "Đây là context của project Brain OS tôi đang xây dựng: [paste nội dung]. Hãy tiếp tục giúp tôi phát triển."
+
+"Đây là context của project Brain OS tôi đang làm. Hãy tiếp tục dựa trên context này."

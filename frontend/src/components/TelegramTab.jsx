@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { APP_CONSTANTS } from '../constants'
 
 export default function TelegramTab({ status, messages, onRefresh }) {
   const [token, setToken] = useState('')
@@ -92,7 +93,7 @@ export default function TelegramTab({ status, messages, onRefresh }) {
       <div style={{ height: 48, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', padding: '0 20px', gap: 12, background: 'var(--sidebar)', flexShrink: 0 }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Telegram</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontFamily: 'var(--mono)' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: connected ? 'var(--green)' : 'var(--muted)', display: 'inline-block', boxShadow: connected ? '0 0 5px var(--green)' : 'none' }} />
+          <span style={{ width: APP_CONSTANTS.STATUS_DOT_SIZE, height: APP_CONSTANTS.STATUS_DOT_SIZE, borderRadius: '50%', background: connected ? 'var(--green)' : 'var(--muted)', display: 'inline-block', boxShadow: connected ? '0 0 5px var(--green)' : 'none' }} />
           <span style={{ color: 'var(--muted)' }}>{connected ? `@${status.username}` : 'Disconnected'}</span>
         </div>
         <div style={{ marginLeft: 'auto' }}>

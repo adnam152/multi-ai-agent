@@ -25,10 +25,11 @@
 const logger = require('./logger');
 const tools = require('./tools');
 const memory = require('./memory');
+const { APP_CONSTANTS, BRAIN_CONSTANTS } = require('./constants');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const COPILOT_BASE = process.env.COPILOT_API_URL || 'http://localhost:4141';
+const COPILOT_BASE = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
 const COPILOT_CHAT = `${COPILOT_BASE}/v1/chat/completions`;
 const COPILOT_MODELS = `${COPILOT_BASE}/v1/models`;
 
@@ -60,7 +61,7 @@ const KNOWN_MODELS = [
 
 async function checkOllama() { // kept as checkOllama for API compatibility
   try {
-    const res = await fetch(COPILOT_MODELS, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(COPILOT_MODELS, { signal: AbortSignal.timeout(BRAIN_CONSTANTS.MODEL_DISCOVERY_TIMEOUT_MS) });
     if (res.ok) {
       const data = await res.json();
       // Merge discovered models with known quota info
@@ -138,7 +139,7 @@ async function callWithTools(messages, model) {
       tools: tools.TOOL_DEFINITIONS,
       tool_choice: 'auto',
       stream: false,
-      max_tokens: 4096,
+      max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS,
     }),
   });
   if (!res.ok) {
@@ -158,7 +159,7 @@ async function streamChat({ messages, model, onToken, onDone, onError }) {
     const res = await fetch(COPILOT_CHAT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: useModel, messages, stream: true, max_tokens: 4096 }),
+      body: JSON.stringify({ model: useModel, messages, stream: true, max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS }),
     });
 
     if (!res.ok) {
@@ -206,7 +207,7 @@ async function call(messages, model = null) {
     const res = await fetch(COPILOT_CHAT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: useModel, messages, stream: false, max_tokens: 2048 }),
+      body: JSON.stringify({ model: useModel, messages, stream: false, max_tokens: BRAIN_CONSTANTS.CALL_MAX_TOKENS }),
     });
     if (!res.ok) throw new Error(`copilot-api: ${res.status}`);
     const data = await res.json();
@@ -236,7 +237,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     currentInput: userInput,
     agentId,
     systemPrompt: BRAIN_SYSTEM,
-    tokenBudget: 4000,
+    tokenBudget: BRAIN_CONSTANTS.TOKEN_BUDGET,
   });
 
   const messages = [
@@ -253,7 +254,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   // Tool calling loop (max 5 iterations)
   let loopMessages = [...messages];
   let loopCount = 0;
-  const MAX_LOOPS = 5;
+  const MAX_LOOPS = BRAIN_CONSTANTS.TOOL_LOOP_LIMIT;
 
   while (loopCount < MAX_LOOPS) {
     loopCount++;
@@ -349,11 +350,11 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
 // ─── Summarize history ─────────────────────────────────────────────────────────
 
 async function summarizeHistory(agentId = 'brain') {
-  const history = memory.getHistory(agentId, 50);
-  if (history.length < 10) return 'Chưa đủ lịch sử để tóm tắt.';
+  const history = memory.getHistory(agentId, BRAIN_CONSTANTS.SUMMARY_HISTORY_LIMIT);
+  if (history.length < BRAIN_CONSTANTS.SUMMARY_MIN_HISTORY) return 'Chưa đủ lịch sử để tóm tắt.';
 
   const text = history
-    .slice(-50)
+    .slice(-BRAIN_CONSTANTS.SUMMARY_HISTORY_LIMIT)
     .map(m => `${m.role}: ${m.content}`)
     .join('\n');
 

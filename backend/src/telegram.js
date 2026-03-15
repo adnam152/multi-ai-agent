@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('./db');
 const logger = require('./logger');
+const { TELEGRAM_CONSTANTS } = require('./constants');
 
 const CONFIG_FILE = path.join(__dirname, '../data/config.json');
 
@@ -47,9 +48,13 @@ function saveConfig(data) {
   config = { ...config, ...data };
   if (db) {
     const rows = Object.entries(data).map(([key, value]) => ({ key, value: String(value) }));
-    db.from('config').upsert(rows).catch(() => {
-      try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
-    });
+    (async () => {
+      try {
+        await db.from('config').upsert(rows);
+      } catch {
+        try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
+      }
+    })();
   } else {
     try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
   }
@@ -62,7 +67,7 @@ function broadcast(payload) {
 
 function broadcastMessage(msg) {
   messageLog.unshift(msg);
-  if (messageLog.length > 100) messageLog.pop();
+  if (messageLog.length > TELEGRAM_CONSTANTS.MESSAGE_LOG_LIMIT) messageLog.pop();
   broadcast({ type: 'telegram_message', message: msg });
 }
 
@@ -74,7 +79,9 @@ async function sendToOwner(text) {
   if (!chatId) throw new Error('Chưa có owner chat ID');
 
   const chunks = [];
-  for (let i = 0; i < text.length; i += 4000) chunks.push(text.slice(i, i + 4000));
+  for (let i = 0; i < text.length; i += TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE) {
+    chunks.push(text.slice(i, i + TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE));
+  }
   for (const chunk of chunks) await bot.sendMessage(chatId, chunk);
 
   const logEntry = {
@@ -83,12 +90,12 @@ async function sendToOwner(text) {
     from: 'Brain',
     to: 'owner',
     chatId,
-    text: text.slice(0, 200) + (text.length > 200 ? '…' : ''),
+    text: text.slice(0, TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH) + (text.length > TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH ? '…' : ''),
     timestamp: new Date().toISOString(),
     proactive: true,
   };
   broadcastMessage(logEntry);
-  logger.info('telegram', `→ owner: ${text.slice(0, 80)}`);
+  logger.info('telegram', `→ owner: ${text.slice(0, TELEGRAM_CONSTANTS.LOG_PREVIEW_LENGTH)}`);
   return { ok: true, chatId, length: text.length };
 }
 
@@ -150,7 +157,7 @@ async function connect(token) {
       text,
       timestamp: new Date().toISOString(),
     });
-    logger.info('telegram', `${senderName} [${chatId}]: ${text.slice(0, 80)}`);
+    logger.info('telegram', `${senderName} [${chatId}]: ${text.slice(0, TELEGRAM_CONSTANTS.LOG_PREVIEW_LENGTH)}`);
 
     if (!brain) return;
 
@@ -182,7 +189,9 @@ async function connect(token) {
 
         // Split long messages
         const chunks = [];
-        for (let i = 0; i < reply.length; i += 4000) chunks.push(reply.slice(i, i + 4000));
+        for (let i = 0; i < reply.length; i += TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE) {
+          chunks.push(reply.slice(i, i + TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE));
+        }
 
         (async () => {
           for (const chunk of chunks) {
@@ -199,7 +208,7 @@ async function connect(token) {
           from: 'Brain',
           to: senderName,
           chatId,
-          text: reply.slice(0, 200) + (reply.length > 200 ? '…' : ''),
+          text: reply.slice(0, TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH) + (reply.length > TELEGRAM_CONSTANTS.MESSAGE_PREVIEW_LENGTH ? '…' : ''),
           timestamp: new Date().toISOString(),
         });
       },
@@ -213,7 +222,7 @@ async function connect(token) {
 
   bot.on('polling_error', (err) => {
     const msg = err?.message || String(err);
-    if (msg.includes('409')) { logger.debug('telegram', '409 — skipping'); return; }
+    if (msg.includes(TELEGRAM_CONSTANTS.POLLING_CONFLICT_CODE)) { logger.debug('telegram', '409 — skipping'); return; }
     logger.warn('telegram', `Polling: ${msg}`);
   });
 
@@ -248,7 +257,7 @@ async function init(brainModule) {
       connect(config.telegramToken).catch(e =>
         logger.warn('telegram', `Auto-reconnect failed: ${e.message}`)
       );
-    }, 3000);
+    }, TELEGRAM_CONSTANTS.AUTORECONNECT_DELAY_MS);
   }
 }
 

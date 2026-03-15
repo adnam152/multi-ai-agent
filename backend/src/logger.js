@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
+const { APP_CONSTANTS, LOGGER_CONSTANTS } = require('./constants');
 
 const LOG_FILE = path.join(__dirname, '../data/logs.json');
-const MAX_LOGS = 1000;
 
 let logs = [];
 let wsClients = new Set();
@@ -11,7 +11,7 @@ let wsClients = new Set();
 async function loadLogs() {
   if (db) {
     try {
-      const { data } = await db.from('logs').select('*').order('timestamp', { ascending: false }).limit(MAX_LOGS);
+      const { data } = await db.from('logs').select('*').order('timestamp', { ascending: false }).limit(LOGGER_CONSTANTS.MAX_LOGS);
       if (data) { logs = data.reverse(); return; }
     } catch (e) {
       console.warn('[logger] Supabase load failed:', e.message);
@@ -24,16 +24,28 @@ async function loadLogs() {
 
 function saveLog(entry) {
   if (db) {
-    db.from('logs').insert({ id: entry.id, timestamp: entry.timestamp, level: entry.level, source: entry.source, message: entry.message, data: entry.data || null })
-      .catch(() => {}); // fire-and-forget
+    (async () => {
+      try {
+        await db.from('logs').insert({
+          id: entry.id,
+          timestamp: entry.timestamp,
+          level: entry.level,
+          source: entry.source,
+          message: entry.message,
+          data: entry.data || null,
+        });
+      } catch {
+        // fire-and-forget
+      }
+    })();
   } else {
-    try { fs.writeFileSync(LOG_FILE, JSON.stringify(logs.slice(-MAX_LOGS), null, 2)); } catch {}
+    try { fs.writeFileSync(LOG_FILE, JSON.stringify(logs.slice(-LOGGER_CONSTANTS.MAX_LOGS), null, 2)); } catch {}
   }
 }
 
 function log(level, source, message, data = null) {
   const entry = {
-    id: Date.now() + Math.random().toString(36).slice(2, 6),
+    id: Date.now() + Math.random().toString(36).slice(2, 2 + LOGGER_CONSTANTS.RANDOM_ID_SUFFIX_LENGTH),
     timestamp: new Date().toISOString(),
     level,    // info | warn | error | debug
     source,   // brain | agent:{name} | telegram | system
@@ -42,7 +54,7 @@ function log(level, source, message, data = null) {
   };
 
   logs.push(entry);
-  if (logs.length > MAX_LOGS) logs.shift();
+  if (logs.length > LOGGER_CONSTANTS.MAX_LOGS) logs.shift();
   saveLog(entry);
 
   // Broadcast to all connected WS clients
@@ -64,7 +76,7 @@ module.exports = {
   init: loadLogs,
   registerClient: (ws) => wsClients.add(ws),
   removeClient: (ws) => wsClients.delete(ws),
-  getLogs: (limit = 200, levelFilter = null) => {
+  getLogs: (limit = APP_CONSTANTS.DEFAULT_LOGS_API_LIMIT, levelFilter = null) => {
     let result = logs;
     if (levelFilter) result = result.filter(l => l.level === levelFilter);
     return result.slice(-limit);
@@ -72,7 +84,11 @@ module.exports = {
   clearLogs: () => {
     logs = [];
     if (db) {
-      db.from('logs').delete().neq('id', '').catch(() => {});
+      (async () => {
+        try {
+          await db.from('logs').delete().neq('id', '');
+        } catch {}
+      })();
     } else {
       try { fs.writeFileSync(LOG_FILE, '[]'); } catch {}
     }

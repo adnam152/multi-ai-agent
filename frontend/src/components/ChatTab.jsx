@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { APP_CONSTANTS } from '../constants'
 
 function renderMarkdown(text) {
   return text
@@ -31,7 +32,7 @@ export default function ChatTab({ send, agents, messages, setMessages, isStreami
   useEffect(() => {
     if (!wsReady) return
     setMessages([])
-    send({ type: 'load_history', agentId: currentAgentId, limit: 50 })
+    send({ type: 'load_history', agentId: currentAgentId, limit: APP_CONSTANTS.CHAT_HISTORY_LIMIT })
   }, [wsReady, currentAgentId])
 
   const sendChat = useCallback(() => {
@@ -148,7 +149,7 @@ function MessageItem({ msg, botAvatar }) {
           </div>
           <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{fmtTime(msg.timestamp || Date.now())}</div>
         </div>
-        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👤</div>
+        <div style={{ width: APP_CONSTANTS.CHAT_AVATAR_SIZE, height: APP_CONSTANTS.CHAT_AVATAR_SIZE, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>👤</div>
       </div>
     )
   }
@@ -156,7 +157,7 @@ function MessageItem({ msg, botAvatar }) {
   if (msg.type === 'streaming') {
     return (
       <div className="msg" style={{ display: 'flex', gap: 10, alignSelf: 'flex-start' }}>
-        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{botAvatar}</div>
+        <div style={{ width: APP_CONSTANTS.CHAT_AVATAR_SIZE, height: APP_CONSTANTS.CHAT_AVATAR_SIZE, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{botAvatar}</div>
         <div style={{ maxWidth: '72%' }}>
           <div style={{ background: 'var(--card)', border: '1px solid var(--border2)', padding: '10px 14px', borderRadius: '16px 16px 16px 4px', fontSize: 14, lineHeight: 1.6, color: 'var(--text)' }}>
             {msg.tokens ? (
@@ -175,7 +176,7 @@ function MessageItem({ msg, botAvatar }) {
   if (msg.type === 'assistant') {
     return (
       <div className="msg" style={{ display: 'flex', gap: 10, alignSelf: 'flex-start' }}>
-        <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{botAvatar}</div>
+        <div style={{ width: APP_CONSTANTS.CHAT_AVATAR_SIZE, height: APP_CONSTANTS.CHAT_AVATAR_SIZE, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{botAvatar}</div>
         <div style={{ maxWidth: '72%', display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div
             style={{ background: 'var(--card)', border: '1px solid var(--border2)', padding: '10px 14px', borderRadius: '16px 16px 16px 4px', fontSize: 14, lineHeight: 1.6, color: 'var(--text)', wordBreak: 'break-word' }}
@@ -217,7 +218,7 @@ function MessageItem({ msg, botAvatar }) {
 function TypingIndicator({ avatar }) {
   return (
     <div className="msg" style={{ display: 'flex', gap: 10, alignSelf: 'flex-start' }}>
-      <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{avatar}</div>
+      <div style={{ width: APP_CONSTANTS.CHAT_AVATAR_SIZE, height: APP_CONSTANTS.CHAT_AVATAR_SIZE, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{avatar}</div>
       <div style={{ background: 'var(--card)', border: '1px solid var(--border2)', padding: '12px 16px', borderRadius: 10, display: 'inline-flex', gap: 5 }}>
         <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
       </div>

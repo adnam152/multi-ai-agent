@@ -17,6 +17,7 @@ const path = require('path');
 const db = require('./db');
 const logger = require('./logger');
 const memory = require('./memory');
+const { SELF_LEARN_CONSTANTS } = require('./constants');
 
 const LESSONS_FILE = path.join(__dirname, '../data/lessons.json');
 let lessons = [];
@@ -38,9 +39,13 @@ async function loadLessons() {
 function saveLessons() {
   if (db) {
     const rows = lessons.map(l => ({ id: l.id || Date.now().toString(36), data: l }));
-    db.from('lessons').upsert(rows).catch(() => {
-      try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
-    });
+        (async () => {
+            try {
+                await db.from('lessons').upsert(rows);
+            } catch {
+                try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
+            }
+        })();
   } else {
     try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
   }
@@ -90,13 +95,13 @@ function storeLesson({ type, trigger, lesson, context = '' }) {
     }
 
     lessons.push(entry);
-    if (lessons.length > 200) lessons.shift(); // keep last 200
+    if (lessons.length > SELF_LEARN_CONSTANTS.MAX_LESSONS) lessons.shift();
     saveLessons();
 
     // Also inject into memory so Prompt Assembler picks it up
     memory.store('system', `[LESSON] ${lesson}`, 'brain', { _lesson: true });
 
-    logger.info('self-learn', `New lesson (${type}): ${lesson.slice(0, 80)}`);
+    logger.info('self-learn', `New lesson (${type}): ${lesson.slice(0, SELF_LEARN_CONSTANTS.LESSON_LOG_PREVIEW_LENGTH)}`);
     return entry;
 }
 
@@ -110,14 +115,14 @@ function learnFromToolError({ toolName, args, error, userInput }) {
     } else if (toolName === 'run_command' && error?.includes('blocked')) {
         lesson = `Lệnh "${args?.command}" bị chặn bởi whitelist. Chỉ được dùng read-only commands.`;
     } else if (error?.includes('timeout')) {
-        lesson = `Tool ${toolName} bị timeout (60s) khi xử lý: "${(userInput || '').slice(0, 50)}". Cân nhắc chia nhỏ task.`;
+        lesson = `Tool ${toolName} bị timeout (${SELF_LEARN_CONSTANTS.TOOL_TIMEOUT_SECONDS}s) khi xử lý: "${(userInput || '').slice(0, SELF_LEARN_CONSTANTS.TOOL_ARGS_PREVIEW_LENGTH)}". Cân nhắc chia nhỏ task.`;
     } else {
-        lesson = `Tool ${toolName} gặp lỗi: ${(error || '').slice(0, 100)}. Args: ${JSON.stringify(args || {}).slice(0, 100)}.`;
+        lesson = `Tool ${toolName} gặp lỗi: ${(error || '').slice(0, SELF_LEARN_CONSTANTS.ERROR_PREVIEW_LENGTH)}. Args: ${JSON.stringify(args || {}).slice(0, SELF_LEARN_CONSTANTS.LESSON_PREVIEW_LENGTH)}.`;
     }
 
     return storeLesson({
         type: 'tool_error',
-        trigger: `${toolName}:${JSON.stringify(args).slice(0, 50)}`,
+        trigger: `${toolName}:${JSON.stringify(args).slice(0, SELF_LEARN_CONSTANTS.TOOL_ARGS_PREVIEW_LENGTH)}`,
         lesson,
     });
 }
@@ -125,7 +130,7 @@ function learnFromToolError({ toolName, args, error, userInput }) {
 // ─── Learn from user correction ───────────────────────────────────────────────
 
 function learnFromCorrection({ userCorrection, previousResponse, previousInput }) {
-    const lesson = `Khi user hỏi "${(previousInput || '').slice(0, 80)}", câu trả lời "${(previousResponse || '').slice(0, 80)}" bị sai. User đã sửa: "${userCorrection.slice(0, 120)}". Hãy tránh lỗi tương tự.`;
+    const lesson = `Khi user hỏi "${(previousInput || '').slice(0, SELF_LEARN_CONSTANTS.PREVIOUS_INPUT_PREVIEW_LENGTH)}", câu trả lời "${(previousResponse || '').slice(0, SELF_LEARN_CONSTANTS.PREVIOUS_RESPONSE_PREVIEW_LENGTH)}" bị sai. User đã sửa: "${userCorrection.slice(0, SELF_LEARN_CONSTANTS.USER_CORRECTION_PREVIEW_LENGTH)}". Hãy tránh lỗi tương tự.`;
 
     return storeLesson({
         type: 'user_correction',
@@ -140,7 +145,7 @@ function learnFromCorrection({ userCorrection, previousResponse, previousInput }
 function learnRoutingPattern({ userInput, agentUsed, successful }) {
     if (!successful) return;
 
-    const keywords = userInput.toLowerCase().split(/\W+/).filter(w => w.length > 3).slice(0, 5);
+    const keywords = userInput.toLowerCase().split(/\W+/).filter(w => w.length > SELF_LEARN_CONSTANTS.ROUTING_KEYWORD_MIN_LENGTH).slice(0, SELF_LEARN_CONSTANTS.ROUTING_KEYWORD_LIMIT);
     if (!keywords.length) return;
 
     const lesson = `Pattern: khi user hỏi về "${keywords.join(', ')}", ${agentUsed} xử lý tốt.`;
@@ -183,12 +188,12 @@ async function analyzeConversation({ userInput, brainResponse, toolsUsed, errors
 
 // ─── Get lessons relevant to current input ────────────────────────────────────
 
-function getRelevantLessons(userInput, limit = 3) {
-    const words = new Set(userInput.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+function getRelevantLessons(userInput, limit = SELF_LEARN_CONSTANTS.RELEVANT_LESSON_LIMIT) {
+    const words = new Set(userInput.toLowerCase().split(/\W+/).filter(w => w.length > SELF_LEARN_CONSTANTS.ROUTING_KEYWORD_MIN_LENGTH));
 
     return lessons
         .map(l => {
-            const lWords = l.lesson.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+            const lWords = l.lesson.toLowerCase().split(/\W+/).filter(w => w.length > SELF_LEARN_CONSTANTS.ROUTING_KEYWORD_MIN_LENGTH);
             const overlap = lWords.filter(w => words.has(w)).length;
             return { ...l, score: overlap };
         })

@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { MEMORY_CONSTANTS, LOGGER_CONSTANTS } = require('./src/constants');
 
 const DATA_DIR = path.join(__dirname, 'data');
 const MEMORY_FILE = path.join(DATA_DIR, 'memory.json');
@@ -42,12 +43,12 @@ const seeds = [
     content: `Brain OS là hệ thống AI orchestration chạy local. Kiến trúc:
 
 - **Orchestrator**: GitHub Copilot qua copilot-api (http://localhost:4141) — thay Groq/Ollama
-- **Prompt Assembler**: lọc context thông minh (recency 50% + keyword 40% + role 10%), budget 4000 tokens
+- **Prompt Assembler**: lọc context thông minh (recency 50% + keyword 40% + role 10%), budget 10000 tokens
 - **Agents**: AI chuyên biệt với skills + context riêng (Claude, Gemini, OpenRouter, OpenAI, Copilot)
 - **14 Tools**: thời gian, agents, system, CLI, pipeline, file I/O, HTTP request, web search, Telegram
-- **Memory**: lưu toàn bộ lịch sử local theo agentId
+- **Memory**: DB-first, fallback file trong backend/data
 - **Telegram**: điều khiển từ xa
-- **Web UI**: port 3333, 4 tab (Chat, Agents, Telegram, Logs)
+- **Web UI**: React + Vite, backend serve frontend/dist
 
 Không cần Ollama. Orchestrator dùng Copilot Pro (free models: gpt-4.1-mini, gpt-4o-mini, gemini-2.0-flash).`,
     timestamp: ts(119),
@@ -62,27 +63,30 @@ Không cần Ollama. Orchestrator dùng Copilot Pro (free models: gpt-4.1-mini, 
   {
     role: 'assistant',
     content: `brain-os/
-├── server.js          # Express + WebSocket, port 3333
-├── seed-context.js    # Script inject context ban đầu
+├── backend/
+│   ├── server.js      # Express + WebSocket, port 3333
+│   ├── seed-context.js
+│   ├── src/
+│   │   ├── brain.js
+│   │   ├── tools.js
+│   │   ├── memory.js
+│   │   ├── agents.js
+│   │   ├── self-learn.js
+│   │   ├── logger.js
+│   │   ├── telegram.js
+│   │   ├── db.js
+│   │   └── constants.js
+│   └── data/          # fallback JSON khi không dùng DB
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── constants.js
+│   │   ├── hooks/useWebSocket.js
+│   │   └── components/*
+│   └── dist/
 ├── context.md         # Context file import vào conversation mới
 ├── README.md          # Hướng dẫn setup
-├── package.json       # express, ws, node-telegram-bot-api
-├── src/
-│   ├── brain.js       # Copilot orchestrator + Tool Calling loop
-│   ├── tools.js       # 14 tools (file I/O, HTTP, search_web, v.v.)
-│   ├── memory.js      # Prompt Assembler: score + token budget 4000
-│   ├── agents.js      # CRUD agents + 5 providers + skills + context
-│   ├── self-learn.js  # Tự học từ lỗi + corrections
-│   ├── logger.js      # Log broadcast qua WebSocket
-│   └── telegram.js    # Telegram bot polling
-├── public/
-│   └── index.html     # SPA toàn bộ UI
-└── data/              # Tự tạo khi chạy
-    ├── memory.json    # Conversation history
-    ├── agents.json    # Agent configs (skills, context, provider)
-    ├── lessons.json   # Self-learn lessons
-    ├── logs.json      # System logs
-    └── config.json    # Telegram token, settings`,
+└── package.json`,
     timestamp: ts(109),
   },
 
@@ -108,7 +112,7 @@ Models Copilot Pro:
 - x3 premium: o1-mini, o3-mini (reasoning models)
 
 Brain dùng gpt-4.1-mini mặc định (free, nhanh).
-Đổi model: \`node server.js --model gpt-4.1\` hoặc qua API POST /api/brain/model.`,
+Đổi model: \`node backend/server.js --model gpt-4.1\` hoặc qua API POST /api/brain/model.`,
     timestamp: ts(99),
   },
 
@@ -160,7 +164,7 @@ API mới:
 
 Tools mới:
 11. read_file: Đọc file local (whitelist: project dir, workspace, Documents)
-    - Giới hạn: 512KB, 8000 chars output
+  - Giới hạn: 512KB, 10000 chars output
     
 12. write_file: Ghi file local (whitelist paths)
     - mode: overwrite | append
@@ -226,16 +230,15 @@ Roadmap:
 const seededEntries = seeds.map(s => ({
   ...s,
   agentId: 'brain',
-  id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  id: Date.now().toString(36) + Math.random().toString(36).slice(2, 2 + LOGGER_CONSTANTS.RANDOM_ID_SUFFIX_LENGTH),
   _seeded: true,
 }));
 
 memory.push(...seededEntries);
 
-// Keep max 500 messages
-if (memory.length > 500) {
+if (memory.length > MEMORY_CONSTANTS.MAX_HISTORY) {
   memory = memory.filter(m => m._seeded).concat(
-    memory.filter(m => !m._seeded).slice(-500 + seededEntries.length)
+    memory.filter(m => !m._seeded).slice(-MEMORY_CONSTANTS.MAX_HISTORY + seededEntries.length)
   );
 }
 

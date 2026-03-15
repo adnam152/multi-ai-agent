@@ -19,6 +19,7 @@ const path = require('path');
 const db = require('./db');
 const logger = require('./logger');
 const memory = require('./memory');
+const { APP_CONSTANTS, AGENT_CONSTANTS } = require('./constants');
 
 const AGENTS_FILE = path.join(__dirname, '../data/agents.json');
 
@@ -106,7 +107,13 @@ function persistAgent(agent) {
 
 function deleteAgent(id) {
   if (db) {
-    db.from('agents').delete().eq('id', id).catch(() => saveToFile());
+    (async () => {
+      try {
+        await db.from('agents').delete().eq('id', id);
+      } catch {
+        saveToFile();
+      }
+    })();
   } else {
     saveToFile();
   }
@@ -123,7 +130,7 @@ function create(data) {
     name: data.name,
     description: data.description || '',
     provider: data.provider || 'copilot',
-    model: data.model || 'gpt-5-mini',
+    model: data.model || APP_CONSTANTS.DEFAULT_BRAIN_MODEL,
     systemPrompt: data.systemPrompt || 'You are a helpful assistant.',
     apiKey: data.apiKey || '',
     apiKeyVar: data.apiKeyVar || '',
@@ -161,10 +168,10 @@ function updateContextNotes(agentId, summary) {
   const agent = getById(agentId);
   if (!agent || !agent.autoUpdateContext) return;
 
-  const maxLen = 2000;
+  const maxLen = AGENT_CONSTANTS.CONTEXT_NOTES_MAX_LENGTH;
   const existing = agent.contextNotes || '';
   const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-  const newNote = `[${timestamp}] ${summary.slice(0, 300)}`;
+  const newNote = `[${timestamp}] ${summary.slice(0, AGENT_CONSTANTS.CONTEXT_NOTE_SUMMARY_LENGTH)}`;
 
   const updated = (existing + '\n' + newNote).trim();
   agent.contextNotes = updated.length > maxLen
@@ -177,7 +184,7 @@ function updateContextNotes(agentId, summary) {
 // ─── Resolve API key ──────────────────────────────────────────────────────────
 
 function resolveApiKey(agent, defaultEnvVar) {
-  if (agent.apiKey && agent.apiKey.length > 8) return agent.apiKey;
+  if (agent.apiKey && agent.apiKey.length > AGENT_CONSTANTS.API_KEY_MIN_LENGTH) return agent.apiKey;
   if (agent.apiKeyVar) {
     const val = process.env[agent.apiKeyVar];
     if (val) return val;
@@ -188,7 +195,7 @@ function resolveApiKey(agent, defaultEnvVar) {
 // ─── Provider: GitHub Copilot (via copilot-api local proxy) ──────────────────
 
 async function callCopilot({ model, messages, onToken, onDone, onError }) {
-  const COPILOT_BASE = process.env.COPILOT_API_URL || 'http://localhost:4141';
+  const COPILOT_BASE = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
   const url = `${COPILOT_BASE}/v1/chat/completions`;
 
   try {
@@ -199,7 +206,7 @@ async function callCopilot({ model, messages, onToken, onDone, onError }) {
         model: model || 'gpt-5-mini',
         messages,
         stream: true,
-        max_tokens: 4096,
+        max_tokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS,
       }),
     });
 
@@ -255,7 +262,7 @@ async function callClaude({ model, messages, apiKey, onToken, onDone, onError })
       },
       body: JSON.stringify({
         model: model || 'claude-sonnet-4-5',
-        max_tokens: 4096,
+        max_tokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS,
         system: systemMsg?.content || '',
         messages: chatMsgs,
         stream: true,
@@ -310,7 +317,7 @@ async function callGemini({ model, messages, apiKey, onToken, onDone, onError })
         body: JSON.stringify({
           systemInstruction: systemMsg ? { parts: [{ text: systemMsg }] } : undefined,
           contents: chatMsgs,
-          generationConfig: { maxOutputTokens: 4096 },
+          generationConfig: { maxOutputTokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS },
         }),
       }
     );
@@ -348,7 +355,7 @@ const OR_FREE_MODELS = [
 
 function selectAutoModel(messages) {
   const totalLen = messages.reduce((a, m) => a + (m.content?.length || 0), 0);
-  if (totalLen > 8000) return 'google/gemini-flash-1.5';
+  if (totalLen > AGENT_CONSTANTS.OPENROUTER_AUTO_MODEL_THRESHOLD) return 'google/gemini-flash-1.5';
   return OR_FREE_MODELS[0];
 }
 
@@ -365,10 +372,10 @@ async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onErro
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${key}`,
-        'HTTP-Referer': 'http://localhost:3333',
+        'HTTP-Referer': process.env.OPENROUTER_REFERER || APP_CONSTANTS.DEFAULT_OPENROUTER_REFERER,
         'X-Title': 'Brain OS',
       },
-      body: JSON.stringify({ model: selectedModel, messages, stream: true, max_tokens: 4096 }),
+      body: JSON.stringify({ model: selectedModel, messages, stream: true, max_tokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS }),
     });
 
     if (!res.ok) { onError(new Error(`OpenRouter: ${res.status}`)); return; }
@@ -405,7 +412,7 @@ async function callOpenAI({ model, messages, apiKey, onToken, onDone, onError })
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({ model: model || 'gpt-4o', messages, stream: true, max_tokens: 4096 }),
+      body: JSON.stringify({ model: model || 'gpt-4o', messages, stream: true, max_tokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS }),
     });
 
     if (!res.ok) { onError(new Error(`OpenAI: ${res.status}`)); return; }
@@ -455,7 +462,7 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
     currentInput: userInput,
     agentId,
     systemPrompt: fullSystemPrompt,
-    tokenBudget: 3000,
+    tokenBudget: AGENT_CONSTANTS.TOKEN_BUDGET,
   });
 
   const messages = [
@@ -474,8 +481,8 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
     memory.store('assistant', content, agentId);
 
     // Auto-update context notes if enabled
-    if (agent.autoUpdateContext && content.length > 50) {
-      const summary = `Q: ${userInput.slice(0, 100)} → A: ${content.slice(0, 200)}`;
+    if (agent.autoUpdateContext && content.length > AGENT_CONSTANTS.AUTO_UPDATE_MIN_RESPONSE_LENGTH) {
+      const summary = `Q: ${userInput.slice(0, AGENT_CONSTANTS.AUTO_UPDATE_QUESTION_PREVIEW_LENGTH)} → A: ${content.slice(0, AGENT_CONSTANTS.AUTO_UPDATE_ANSWER_PREVIEW_LENGTH)}`;
       updateContextNotes(agentId, summary);
     }
 

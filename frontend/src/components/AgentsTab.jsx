@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import AgentModal from './AgentModal'
+import { APP_CONSTANTS } from '../constants'
 
 const PROVIDER_ICONS = { claude: '🟣', gemini: '🔵', openrouter: '🌐', openai: '🟢', ollama: '🦙', copilot: '🤖' }
 
@@ -107,7 +108,7 @@ function AgentCard({ agent, onEdit, onDelete, onToggle }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
             {agent.name}
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: agent.active ? 'var(--green)' : 'var(--muted)', display: 'inline-block', boxShadow: agent.active ? '0 0 5px var(--green)' : 'none' }} />
+            <span style={{ width: APP_CONSTANTS.STATUS_DOT_SIZE, height: APP_CONSTANTS.STATUS_DOT_SIZE, borderRadius: '50%', background: agent.active ? 'var(--green)' : 'var(--muted)', display: 'inline-block', boxShadow: agent.active ? '0 0 5px var(--green)' : 'none' }} />
           </div>
           {agent.description && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{agent.description}</div>}
         </div>
@@ -147,7 +148,7 @@ function AgentRow({ agent, onEdit, onDelete, onToggle }) {
         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{agent.name}</div>
         <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{agent.provider} · {agent.model}</div>
       </div>
-      <span style={{ width: 7, height: 7, borderRadius: '50%', background: agent.active ? 'var(--green)' : 'var(--muted)', boxShadow: agent.active ? '0 0 5px var(--green)' : 'none' }} />
+      <span style={{ width: APP_CONSTANTS.STATUS_DOT_SIZE, height: APP_CONSTANTS.STATUS_DOT_SIZE, borderRadius: '50%', background: agent.active ? 'var(--green)' : 'var(--muted)', boxShadow: agent.active ? '0 0 5px var(--green)' : 'none' }} />
       <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={() => onEdit(agent)} style={btnGhost}>✏️ Edit</button>
         <button onClick={() => onToggle(agent)} style={btnGhost}>{agent.active ? '⏸' : '▶'}</button>

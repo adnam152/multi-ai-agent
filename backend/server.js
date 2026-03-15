@@ -15,9 +15,10 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
+const { APP_CONSTANTS, PATH_CONSTANTS } = require('./src/constants');
 
 // ─── Ensure data directory ────────────────────────────────────────────────────
-const DATA_DIR = path.join(__dirname, '../data');
+const DATA_DIR = PATH_CONSTANTS.DATA_DIR;
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 // ─── Modules ──────────────────────────────────────────────────────────────────
@@ -33,15 +34,15 @@ const getArg = (flag, def) => {
   const i = args.indexOf(flag);
   return i !== -1 && args[i + 1] ? args[i + 1] : def;
 };
-const PORT = parseInt(getArg('--port', process.env.PORT || '3333'));
-const MODEL = getArg('--model', process.env.BRAIN_MODEL || 'gpt-5-mini');
+const PORT = parseInt(getArg('--port', process.env.PORT || String(APP_CONSTANTS.DEFAULT_PORT)));
+const MODEL = getArg('--model', process.env.BRAIN_MODEL || APP_CONSTANTS.DEFAULT_BRAIN_MODEL);
 
 // ─── Init (called at bottom in start()) ──────────────────────────────────────
 
 // ─── Express ──────────────────────────────────────────────────────────────────
 const app = express();
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+app.use(express.json({ limit: APP_CONSTANTS.JSON_BODY_LIMIT }));
+app.use(express.static(PATH_CONSTANTS.FRONTEND_DIST_DIR));
 
 // ── Self-learn (optional module) ──────────────────────────────────────────────
 let selfLearn;
@@ -142,7 +143,7 @@ app.delete('/api/agents/:id/context', (req, res) => {
 // ── Memory ────────────────────────────────────────────────────────────────────
 app.get('/api/memory', (req, res) => {
   const { agentId, limit } = req.query;
-  res.json(memory.getHistory(agentId || null, parseInt(limit) || 100));
+  res.json(memory.getHistory(agentId || null, parseInt(limit) || APP_CONSTANTS.DEFAULT_MEMORY_API_LIMIT));
 });
 
 app.delete('/api/memory', (req, res) => {
@@ -175,13 +176,13 @@ app.get('/api/lessons', (req, res) => {
 });
 app.delete('/api/lessons', (req, res) => {
   const f = path.join(DATA_DIR, 'lessons.json');
-  try { fs.writeFileSync(f, '[]'); } catch { }
+  try { fs.writeFileSync(f, APP_CONSTANTS.EMPTY_JSON_ARRAY); } catch { }
   res.json({ ok: true });
 });
 
 // ── Logs ──────────────────────────────────────────────────────────────────────
 app.get('/api/logs', (req, res) => {
-  res.json(logger.getLogs(parseInt(req.query.limit) || 200, req.query.level || null));
+  res.json(logger.getLogs(parseInt(req.query.limit) || APP_CONSTANTS.DEFAULT_LOGS_API_LIMIT, req.query.level || null));
 });
 app.delete('/api/logs', (req, res) => {
   logger.clearLogs();
@@ -243,7 +244,7 @@ wss.on('connection', (ws) => {
       const { content, agentId = 'brain', requestId } = msg;
       if (!content?.trim()) return;
 
-      logger.info(agentId === 'brain' ? 'brain' : `agent:${agentId}`, `→ ${content.slice(0, 80)}`);
+      logger.info(agentId === 'brain' ? 'brain' : `agent:${agentId}`, `→ ${content.slice(0, APP_CONSTANTS.LOG_PREVIEW_LENGTH)}`);
 
       const sendToken = (token) => {
         ws.send(JSON.stringify({ type: 'chat_token', token, requestId }));
@@ -289,7 +290,7 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'load_history') {
-      const history = memory.getHistory(msg.agentId || null, msg.limit || 30);
+      const history = memory.getHistory(msg.agentId || null, msg.limit || APP_CONSTANTS.DEFAULT_WS_HISTORY_LIMIT);
       ws.send(JSON.stringify({ type: 'history', messages: history }));
     }
   });

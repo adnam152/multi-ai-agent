@@ -14,13 +14,10 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
+const { MEMORY_CONSTANTS } = require('./constants');
 
 const MEMORY_FILE = path.join(__dirname, '../data/memory.json');
 const SUMMARY_FILE = path.join(__dirname, '../data/summaries.json');
-const MAX_HISTORY = 500;
-
-// Rough chars-per-token estimate (conservative)
-const CHARS_PER_TOKEN = 4;
 
 let history = [];       // Full history array
 let summaries = [];     // Periodic summaries to compress old context
@@ -31,7 +28,7 @@ async function load() {
   if (db) {
     try {
       const [{ data: msgs }, { data: sums }] = await Promise.all([
-        db.from('messages').select('*').order('timestamp', { ascending: true }).limit(MAX_HISTORY),
+        db.from('messages').select('*').order('timestamp', { ascending: true }).limit(MEMORY_CONSTANTS.MAX_HISTORY),
         db.from('summaries').select('*').order('timestamp', { ascending: true }),
       ]);
       history = (msgs || []).map(r => ({
@@ -56,7 +53,7 @@ async function load() {
 
 function saveToFile() {
   try {
-    fs.writeFileSync(MEMORY_FILE, JSON.stringify(history.slice(-MAX_HISTORY), null, 2));
+    fs.writeFileSync(MEMORY_FILE, JSON.stringify(history.slice(-MEMORY_CONSTANTS.MAX_HISTORY), null, 2));
     fs.writeFileSync(SUMMARY_FILE, JSON.stringify(summaries, null, 2));
   } catch {}
 }
@@ -73,7 +70,7 @@ function store(role, content, agentId = 'brain', meta = {}) {
     ...meta
   };
   history.push(msg);
-  if (history.length > MAX_HISTORY) history.shift();
+  if (history.length > MEMORY_CONSTANTS.MAX_HISTORY) history.shift();
 
   if (db) {
     db.from('messages').insert({
@@ -100,7 +97,7 @@ const STOP_WORDS = new Set([
 function extractKeywords(text) {
   return text.toLowerCase()
     .split(/\W+/)
-    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+    .filter(w => w.length > MEMORY_CONSTANTS.KEYWORD_MIN_LENGTH && !STOP_WORDS.has(w));
 }
 
 // ─── Score a single message for relevance ─────────────────────────────────────
@@ -129,10 +126,10 @@ function assemblePrompt({
   currentInput,
   agentId = 'brain',
   systemPrompt = '',
-  tokenBudget = 3000,
-  alwaysIncludeLastN = 6,   // Always include last N turns regardless of score
+  tokenBudget = MEMORY_CONSTANTS.DEFAULT_TOKEN_BUDGET,
+  alwaysIncludeLastN = MEMORY_CONSTANTS.ALWAYS_INCLUDE_LAST_N,
 }) {
-  const maxChars = tokenBudget * CHARS_PER_TOKEN;
+  const maxChars = tokenBudget * MEMORY_CONSTANTS.CHARS_PER_TOKEN;
   const keywords = extractKeywords(currentInput);
 
   // Filter by agentId (brain vs agent-specific history)
@@ -153,15 +150,15 @@ function assemblePrompt({
   const byScore = [...scored].sort((a, b) => b._score - a._score);
 
   let selected = new Map();
-  let usedChars = systemPrompt.length + currentInput.length + 200; // overhead
+  let usedChars = systemPrompt.length + currentInput.length + MEMORY_CONSTANTS.PROMPT_OVERHEAD_CHARS;
 
   for (const msg of byScore) {
-    const cost = msg.content.length + 30;
+    const cost = msg.content.length + MEMORY_CONSTANTS.MESSAGE_OVERHEAD_CHARS;
     if (usedChars + cost <= maxChars || lastN.has(msg.id)) {
       selected.set(msg.id, msg);
       usedChars += cost;
     }
-    if (selected.size >= 40) break; // hard cap
+    if (selected.size >= MEMORY_CONSTANTS.CONTEXT_MESSAGE_HARD_CAP) break;
   }
 
   // Re-sort selected by timestamp for coherent conversation flow
@@ -174,8 +171,8 @@ function assemblePrompt({
     stats: {
       totalMessages: agentHistory.length,
       selectedMessages: context.length,
-      estimatedTokens: Math.round(usedChars / CHARS_PER_TOKEN),
-      keywords: keywords.slice(0, 8)
+      estimatedTokens: Math.round(usedChars / MEMORY_CONSTANTS.CHARS_PER_TOKEN),
+      keywords: keywords.slice(0, MEMORY_CONSTANTS.KEYWORD_STATS_LIMIT)
     }
   };
 }
@@ -202,19 +199,32 @@ module.exports = {
   store,
   assemblePrompt,
   storeSummary,
-  getHistory: (agentId = null, limit = 100) => {
+  getHistory: (agentId = null, limit = MEMORY_CONSTANTS.DEFAULT_HISTORY_LIMIT) => {
+    const safeLimit = limit || MEMORY_CONSTANTS.DEFAULT_HISTORY_LIMIT;
     let h = agentId ? history.filter(m => m.agentId === agentId) : history;
-    return h.slice(-limit);
+    return h.slice(-safeLimit);
   },
   clearHistory: (agentId = null) => {
     if (agentId) {
       const ids = history.filter(m => m.agentId === agentId).map(m => m.id);
       history = history.filter(m => m.agentId !== agentId);
-      if (db) db.from('messages').delete().in('id', ids).catch(() => {});
+      if (db) {
+        (async () => {
+          try {
+            await db.from('messages').delete().in('id', ids);
+          } catch {}
+        })();
+      }
     } else {
       const ids = history.map(m => m.id);
       history = [];
-      if (db) db.from('messages').delete().in('id', ids).catch(() => {});
+      if (db) {
+        (async () => {
+          try {
+            await db.from('messages').delete().in('id', ids);
+          } catch {}
+        })();
+      }
     }
     if (!db) saveToFile();
   },

@@ -4,6 +4,11 @@
 
 Orchestrator: **GitHub Copilot** (qua `copilot-api`) — không cần Ollama, không cần Groq API key riêng.
 
+Kiến trúc hiện tại: **backend + frontend tách riêng**.
+- Backend: `backend/` (Express + WebSocket + tools + memory + telegram)
+- Frontend: `frontend/` (React + Vite + Tailwind)
+- Runtime data fallback: `backend/data/`
+
 ---
 
 ## Tính năng
@@ -23,8 +28,11 @@ Orchestrator: **GitHub Copilot** (qua `copilot-api`) — không cần Ollama, kh
 
 ```bash
 git clone <repo>
-cd brain-os
+cd multi-ai-agent
 npm install
+
+# Cài deps cho backend + frontend
+npm run install:all
 ```
 
 ### 2. Setup GitHub Copilot proxy (bắt buộc)
@@ -46,13 +54,13 @@ copilot-api start
 
 ```bash
 # Seed context ban đầu
-node seed-context.js
+node backend/seed-context.js
 
 # Chạy server
-node server.js
+npm run start
 
 # Hoặc với model khác
-node server.js --port 3333 --model gpt-4.1
+node backend/server.js --port 3333 --model gpt-4.1
 ```
 
 ### 4. Mở Web UI
@@ -65,7 +73,8 @@ Truy cập http://localhost:3333
 
 | Model | Quota | Dùng khi |
 |-------|-------|---------|
-| `gpt-4.1-mini` | ✅ Free | Mặc định, tất cả tasks |
+| `gpt-5-mini` | ✅ Free | Mặc định hiện tại |
+| `gpt-4.1-mini` | ✅ Free | Ổn định |
 | `gpt-4o-mini` | ✅ Free | Backup nhanh |
 | `gemini-2.0-flash` | ✅ Free | Google model |
 | `gpt-4.1` | x1 premium | Tasks phức tạp |
@@ -75,7 +84,7 @@ Truy cập http://localhost:3333
 | `o1-mini` | x3 premium | Reasoning |
 | `o3-mini` | x3 premium | Reasoning mạnh |
 
-**Đổi model Brain:** `node server.js --model gpt-4.1`
+**Đổi model Brain:** `node backend/server.js --model gpt-4.1`
 
 ---
 
@@ -139,6 +148,12 @@ GET  /api/memory               — chat history
 POST /api/memory/summarize     — tóm tắt lịch sử
 GET  /api/lessons              — self-learn lessons
 GET  /api/logs                 — system logs
+GET  /api/telegram             — trạng thái telegram
+GET  /api/telegram/messages    — log telegram gần đây
+POST /api/telegram/connect     — kết nối bot bằng token
+POST /api/telegram/owner       — set owner chat id
+POST /api/telegram/send        — gửi tin chủ động
+POST /api/telegram/disconnect  — ngắt kết nối bot
 ```
 
 ---
@@ -152,13 +167,24 @@ GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
 OPENAI_API_KEY=...
 
+# (Tuỳ chọn) OpenRouter referer override
+OPENROUTER_REFERER=http://localhost:3333
+
+# Supabase (nếu muốn dùng DB thay cho file fallback)
+SUPABASE_URL=...
+SUPABASE_SERVICE_KEY=...
+
 # Tùy chỉnh copilot-api URL (mặc định: http://localhost:4141)
 COPILOT_API_URL=http://localhost:4141
 
 # Port và model
 PORT=3333
-BRAIN_MODEL=gpt-4.1-mini
+BRAIN_MODEL=gpt-5-mini
 ```
+
+Lưu ý Telegram:
+- Token được nhập từ UI/API `/api/telegram/connect` và lưu vào DB (hoặc fallback file `backend/data/config.json`).
+- Hiện runtime chưa đọc token Telegram trực tiếp từ env.
 
 ---
 
@@ -187,6 +213,9 @@ BRAIN_MODEL=gpt-4.1-mini
 copilot-api chưa chạy. Hãy chạy: npx copilot-api@latest start
 ```
 → Chạy `copilot-api start` và giữ terminal mở
+
+**Port đã bị chiếm (`EADDRINUSE`)**:
+- Chạy cổng khác: `node backend/server.js --port 3399`
 
 **Token hết hạn:**
 → Chạy `copilot-api auth` lại

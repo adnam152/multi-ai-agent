@@ -1,4 +1,5 @@
 import React from 'react'
+import { APP_CONSTANTS } from '../constants'
 
 export default function Sidebar({ activeTab, setActiveTab, isDark, setIsDark, wsReady, status, telegramStatus, agentCount, logCount }) {
   const navItems = [
@@ -91,7 +92,7 @@ function StatusRow({ dotClass, text }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, color: 'var(--muted)' }}>
       <div style={{
-        width: 6, height: 6, borderRadius: '50%',
+        width: APP_CONSTANTS.SIDEBAR_STATUS_DOT_SIZE, height: APP_CONSTANTS.SIDEBAR_STATUS_DOT_SIZE, borderRadius: '50%',
         background: colors[dotClass] || 'var(--muted)',
         boxShadow: dotClass === 'green' ? `0 0 5px ${colors.green}` : 'none',
         flexShrink: 0,

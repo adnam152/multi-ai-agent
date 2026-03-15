@@ -6,13 +6,14 @@ import ChatTab from './components/ChatTab'
 import AgentsTab from './components/AgentsTab'
 import TelegramTab from './components/TelegramTab'
 import LogsTab from './components/LogsTab'
+import { APP_CONSTANTS } from './constants'
 
 const fetcher = (url) => fetch(url).then(r => r.json())
 
 export default function App() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('chat')
-  const [isDark, setIsDark] = useState(() => (localStorage.getItem('theme') || 'dark') === 'dark')
+  const [isDark, setIsDark] = useState(() => (localStorage.getItem(APP_CONSTANTS.THEME_STORAGE_KEY) || APP_CONSTANTS.DEFAULT_THEME) === APP_CONSTANTS.DEFAULT_THEME)
   const [wsReady, setWsReady] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -20,13 +21,13 @@ export default function App() {
 
   // ── REST queries ──────────────────────────────────────────────────────────
   const { data: status = { brain: { available: false, model: '' }, memorySize: 0 } } =
-    useQuery({ queryKey: ['status'], queryFn: () => fetcher('/api/status'), refetchInterval: 30_000 })
+    useQuery({ queryKey: ['status'], queryFn: () => fetcher('/api/status'), refetchInterval: APP_CONSTANTS.STATUS_REFETCH_INTERVAL_MS })
 
   const { data: agents = [], refetch: refetchAgents } =
     useQuery({ queryKey: ['agents'], queryFn: () => fetcher('/api/agents') })
 
   const { data: logs = [] } =
-    useQuery({ queryKey: ['logs'], queryFn: () => fetcher('/api/logs?limit=200') })
+    useQuery({ queryKey: ['logs'], queryFn: () => fetcher(`/api/logs?limit=${APP_CONSTANTS.LOGS_QUERY_LIMIT}`) })
 
   const { data: telegramStatus = {} } =
     useQuery({ queryKey: ['telegram'], queryFn: () => fetcher('/api/telegram') })
@@ -36,7 +37,7 @@ export default function App() {
 
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
-    localStorage.setItem('theme', isDark ? 'dark' : 'light')
+    localStorage.setItem(APP_CONSTANTS.THEME_STORAGE_KEY, isDark ? 'dark' : 'light')
   }, [isDark])
 
   // ── WebSocket handler ─────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ export default function App() {
         break
       case 'log':
         if (msg.entry) {
-          queryClient.setQueryData(['logs'], (old = []) => [...old.slice(-499), msg.entry])
+          queryClient.setQueryData(['logs'], (old = []) => [...old.slice(-(APP_CONSTANTS.MAX_LOG_ENTRIES - 1)), msg.entry])
         }
         break
       case 'telegram_status':

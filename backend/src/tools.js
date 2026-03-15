@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const logger = require('./logger');
+const { PATH_CONSTANTS, TOOL_CONSTANTS, TELEGRAM_CONSTANTS } = require('./constants');
 
 // ─── Tool Definitions (JSON Schema for OpenAI-compatible tool calling) ────────
 
@@ -151,7 +152,7 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          message: { type: 'string', description: 'Message to send. Max 4000 chars.' },
+          message: { type: 'string', description: `Message to send. Max ${TELEGRAM_CONSTANTS.MESSAGE_CHUNK_SIZE} chars.` },
         },
         required: ['message'],
       },
@@ -200,7 +201,7 @@ const TOOL_DEFINITIONS = [
           method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE'], description: 'HTTP method (default: GET)' },
           headers: { type: 'object', description: 'Request headers (optional)' },
           body: { type: 'string', description: 'Request body for POST/PUT (JSON string)' },
-          timeout_ms: { type: 'number', description: 'Timeout in ms (default: 10000)' },
+          timeout_ms: { type: 'number', description: `Timeout in ms (default: ${TOOL_CONSTANTS.HTTP_DEFAULT_TIMEOUT_MS})` },
         },
         required: ['url'],
       },
@@ -284,8 +285,8 @@ const SAFE_FILE_DIRS = [
   path.join(os.homedir(), 'brain-os'),
   path.join(os.homedir(), 'workspace'),
   path.join(os.homedir(), 'Documents'),
-  path.join(__dirname, '..', 'data'),
-  path.join(__dirname, '..', 'workspace'),
+  PATH_CONSTANTS.DATA_DIR,
+  path.join(PATH_CONSTANTS.BACKEND_ROOT, 'workspace'),
 ];
 
 function isSafeFilePath(filePath) {
@@ -367,7 +368,7 @@ const implementations = {
       let result = '';
       const timeout = setTimeout(() => {
         resolve({ agent: agent.name, response: result || '(timeout)', partial: true });
-      }, 60000);
+      }, TOOL_CONSTANTS.PIPELINE_STEP_TIMEOUT_MS);
 
       agents.runAgent({
         agentId: agent_id,
@@ -414,13 +415,13 @@ const implementations = {
 
     try {
       const output = execSync(cmd, {
-        timeout: 15000,
+        timeout: TOOL_CONSTANTS.COMMAND_TIMEOUT_MS,
         encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
+        maxBuffer: TOOL_CONSTANTS.COMMAND_MAX_BUFFER_BYTES,
       });
-      return { output: output.slice(0, 3000), command: cmd };
+      return { output: output.slice(0, TOOL_CONSTANTS.COMMAND_OUTPUT_PREVIEW_LENGTH), command: cmd };
     } catch (e) {
-      return { error: e.message.slice(0, 500), command: cmd };
+      return { error: e.message.slice(0, TOOL_CONSTANTS.ERROR_OUTPUT_PREVIEW_LENGTH), command: cmd };
     }
   },
 
@@ -432,7 +433,7 @@ const implementations = {
     const runStep = async (step, prevOutputs = []) => {
       let task = step.task;
       prevOutputs.forEach((r, i) => {
-        const output = typeof r === 'object' ? JSON.stringify(r).slice(0, 500) : String(r);
+        const output = typeof r === 'object' ? JSON.stringify(r).slice(0, TOOL_CONSTANTS.ERROR_OUTPUT_PREVIEW_LENGTH) : String(r);
         task = task.replace(`{step_${i}}`, output);
       });
 
@@ -444,7 +445,7 @@ const implementations = {
 
         const timeout = setTimeout(() => {
           resolve({ agent: agent.name, response: result || '(timeout)', partial: true });
-        }, 60000);
+        }, TOOL_CONSTANTS.PIPELINE_STEP_TIMEOUT_MS);
 
         agents.runAgent({
           agentId: step.agent_id,
@@ -485,7 +486,7 @@ const implementations = {
     if (!status.ownerChatId) return { error: 'Chưa có owner chat ID.' };
     try {
       const result = await telegram.sendToOwner(args.message);
-      return { sent: true, chatId: result.chatId, preview: args.message.slice(0, 100) };
+      return { sent: true, chatId: result.chatId, preview: args.message.slice(0, TOOL_CONSTANTS.TELEGRAM_PREVIEW_LENGTH) };
     } catch (e) {
       return { error: e.message };
     }
@@ -499,7 +500,7 @@ const implementations = {
 
     if (!isSafeFilePath(filePath)) {
       // Also allow relative paths from project root
-      const projectRoot = path.join(__dirname, '..');
+      const projectRoot = PATH_CONSTANTS.BACKEND_ROOT;
       const absPath = path.resolve(projectRoot, filePath);
       if (!absPath.startsWith(projectRoot)) {
         return { error: `Path not allowed: "${filePath}". Must be within project or workspace directories.` };
@@ -511,14 +512,14 @@ const implementations = {
       if (!fs.existsSync(absPath)) return { error: `File not found: ${filePath}` };
 
       const stat = fs.statSync(absPath);
-      if (stat.size > 512 * 1024) return { error: `File too large (${Math.round(stat.size / 1024)}KB). Max 512KB.` };
+      if (stat.size > TOOL_CONSTANTS.FILE_MAX_SIZE_BYTES) return { error: `File too large (${Math.round(stat.size / 1024)}KB). Max 512KB.` };
 
       const content = fs.readFileSync(absPath, encoding);
       return {
         path: absPath,
         size: stat.size,
-        content: encoding === 'utf8' ? content.slice(0, 8000) : content,
-        truncated: encoding === 'utf8' && content.length > 8000,
+        content: encoding === 'utf8' ? content.slice(0, TOOL_CONSTANTS.FILE_CONTENT_PREVIEW_LENGTH) : content,
+        truncated: encoding === 'utf8' && content.length > TOOL_CONSTANTS.FILE_CONTENT_PREVIEW_LENGTH,
       };
     } catch (e) {
       return { error: `Read error: ${e.message}` };
@@ -529,7 +530,7 @@ const implementations = {
 
   write_file: async (args) => {
     const { file_path, content, mode = 'overwrite' } = args;
-    const projectRoot = path.join(__dirname, '..');
+    const projectRoot = PATH_CONSTANTS.BACKEND_ROOT;
     const absPath = path.resolve(projectRoot, file_path);
 
     // Must be within project root or workspace
@@ -556,7 +557,7 @@ const implementations = {
   // ── New: http_request ───────────────────────────────────────────────────────
 
   http_request: async (args) => {
-    const { url, method = 'GET', headers = {}, body, timeout_ms = 10000 } = args;
+    const { url, method = 'GET', headers = {}, body, timeout_ms = TOOL_CONSTANTS.HTTP_DEFAULT_TIMEOUT_MS } = args;
 
     try {
       const opts = {
@@ -581,8 +582,8 @@ const implementations = {
         status: res.status,
         ok: res.ok,
         url,
-        body: parsed || text.slice(0, 4000),
-        truncated: !parsed && text.length > 4000,
+        body: parsed || text.slice(0, TOOL_CONSTANTS.HTTP_TEXT_PREVIEW_LENGTH),
+        truncated: !parsed && text.length > TOOL_CONSTANTS.HTTP_TEXT_PREVIEW_LENGTH,
         headers: Object.fromEntries(res.headers.entries()),
       };
     } catch (e) {
@@ -593,8 +594,8 @@ const implementations = {
   // ── New: search_web (DuckDuckGo) ────────────────────────────────────────────
 
   search_web: async (args) => {
-    const { query, max_results = 5 } = args;
-    const limit = Math.min(max_results, 10);
+    const { query, max_results = TOOL_CONSTANTS.SEARCH_DEFAULT_RESULTS } = args;
+    const limit = Math.min(max_results, TOOL_CONSTANTS.SEARCH_MAX_RESULTS);
 
     try {
       const encoded = encodeURIComponent(query);
@@ -603,7 +604,7 @@ const implementations = {
 
       const res = await fetch(url, {
         headers: { 'User-Agent': 'Brain-OS/1.0' },
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(TOOL_CONSTANTS.HTTP_DEFAULT_TIMEOUT_MS),
       });
 
       if (!res.ok) return { error: `Search API error: ${res.status}`, query };
@@ -627,8 +628,8 @@ const implementations = {
         for (const topic of data.RelatedTopics.slice(0, limit - 1)) {
           if (topic.Text && topic.FirstURL) {
             results.push({
-              title: topic.Text.slice(0, 100),
-              snippet: topic.Text.slice(0, 300),
+              title: topic.Text.slice(0, TOOL_CONSTANTS.SEARCH_TITLE_PREVIEW_LENGTH),
+              snippet: topic.Text.slice(0, TOOL_CONSTANTS.SEARCH_SNIPPET_PREVIEW_LENGTH),
               url: topic.FirstURL,
               source: 'DuckDuckGo',
             });
@@ -722,9 +723,9 @@ async function executeTool(toolCall) {
   }
 
   try {
-    logger.debug('tools', `🔧 ${name}(${JSON.stringify(args).slice(0, 100)})`);
+    logger.debug('tools', `🔧 ${name}(${JSON.stringify(args).slice(0, TOOL_CONSTANTS.TOOL_LOG_ARGS_PREVIEW_LENGTH)})`);
     const result = await impl(args);
-    logger.debug('tools', `✅ ${name} → ${JSON.stringify(result).slice(0, 200)}`);
+    logger.debug('tools', `✅ ${name} → ${JSON.stringify(result).slice(0, TOOL_CONSTANTS.TOOL_LOG_RESULT_PREVIEW_LENGTH)}`);
     return result;
   } catch (e) {
     logger.error('tools', `❌ ${name} failed: ${e.message}`);
