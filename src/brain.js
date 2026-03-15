@@ -25,8 +25,8 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 // Groq models thực tế — không dùng format openrouter
 const GROQ_MODELS = {
   fast: 'llama-3.1-8b-instant',        // routing nhanh, tool calling đơn giản
-  smart: 'llama-3.3-70b-versatile',     // reasoning, tool calling phức tạp
-  default: 'llama-3.3-70b-versatile',
+  smart: 'openai/gpt-oss-20b',     // reasoning, tool calling phức tạp
+  default: 'openai/gpt-oss-20b',
 };
 const MAX_TOOL_ITERATIONS = 5;
 

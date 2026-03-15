@@ -28,7 +28,7 @@ const getArg = (flag, def) => {
   return i !== -1 && args[i + 1] ? args[i + 1] : def;
 };
 const PORT = parseInt(getArg('--port', process.env.PORT || '3333'));
-const MODEL = getArg('--model', process.env.BRAIN_MODEL || 'llama-3.3-70b-versatile');
+const MODEL = getArg('--model', process.env.BRAIN_MODEL || 'openai/gpt-oss-20b');
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 logger.init();
