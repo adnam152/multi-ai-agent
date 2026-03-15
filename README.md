@@ -71,18 +71,25 @@ Truy cập http://localhost:3333
 
 ## Models GitHub Copilot Pro
 
-| Model | Quota | Dùng khi |
-|-------|-------|---------|
-| `gpt-5-mini` | ✅ Free | Mặc định hiện tại |
-| `gpt-4.1-mini` | ✅ Free | Ổn định |
-| `gpt-4o-mini` | ✅ Free | Backup nhanh |
-| `gemini-2.0-flash` | ✅ Free | Google model |
-| `gpt-4.1` | x1 premium | Tasks phức tạp |
-| `gpt-4o` | x1 premium | Balanced |
-| `claude-sonnet-4.5` | x1 premium | Code/analysis |
-| `claude-haiku-3.5` | x1 premium | Claude nhanh |
-| `o1-mini` | x3 premium | Reasoning |
-| `o3-mini` | x3 premium | Reasoning mạnh |
+| Model ID | Request Multiplier |
+|-------|-------|
+| `claude-haiku-4-5` | `0.33x` |
+| `gemini-2.5-pro` | `1x` |
+| `gemini-3-flash-preview` | `0.33x` |
+| `gemini-3-pro-preview` | `1x` |
+| `gemini-3.1-pro-preview` | `1x` |
+| `gpt-4.1` | `0x` |
+| `gpt-4o` | `0x` |
+| `gpt-5-mini` | `0x` |
+| `gpt-5.1` | `1x` |
+| `gpt-5.1-codex` | `1x` |
+| `gpt-5.1-codex-max` | `1x` |
+| `gpt-5.1-codex-mini-preview` | `0.33x` |
+| `gpt-5.2` | `1x` |
+| `gpt-5.2-codex` | `1x` |
+| `gpt-5.3-codex` | `1x` |
+| `grok-code-fast-1` | `0.25x` |
+| `raptor-mini-preview` | `0x` |
 
 **Đổi model Brain:** `node backend/server.js --model gpt-4.1`
 
