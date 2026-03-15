@@ -1,16 +1,23 @@
 import React, { useState } from 'react'
 
 const COPILOT_MODELS = [
-  { id: 'gpt-5-mini', label: 'GPT-5 Mini · Free' },
-  { id: 'gpt-4.1', label: 'GPT-4.1 · Free' },
-  { id: 'gpt-4o', label: 'GPT-4o · Free' },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 · 0.33x' },
-  { id: 'gemini-3-flash', label: 'Gemini 3 Flash Preview · 0.33x' },
   { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro · 1x' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview) · 0.33x' },
+  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview) · 1x' },
+  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (Preview) · 1x' },
+  { id: 'gpt-4.1', label: 'GPT-4.1 · 0x' },
+  { id: 'gpt-4o', label: 'GPT-4o · 0x' },
+  { id: 'gpt-5-mini', label: 'GPT-5 mini · 0x' },
   { id: 'gpt-5.1', label: 'GPT-5.1 · 1x' },
+  { id: 'gpt-5.1-codex', label: 'GPT-5.1-Codex · 1x' },
+  { id: 'gpt-5.1-codex-max', label: 'GPT-5.1-Codex-Max · 1x' },
+  { id: 'gpt-5.1-codex-mini-preview', label: 'GPT-5.1-Codex-Mini (Preview) · 0.33x' },
   { id: 'gpt-5.2', label: 'GPT-5.2 · 1x' },
-  { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex · 1x' },
-  { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex · 1x' },
+  { id: 'gpt-5.2-codex', label: 'GPT-5.2-Codex · 1x' },
+  { id: 'gpt-5.3-codex', label: 'GPT-5.3-Codex · 1x' },
+  { id: 'grok-code-fast-1', label: 'Grok Code Fast 1 · 0.25x' },
+  { id: 'raptor-mini-preview', label: 'Raptor mini (Preview) · 0x' },
 ]
 
 export default function AgentModal({ agent, onClose, onSave }) {
