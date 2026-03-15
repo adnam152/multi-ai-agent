@@ -108,16 +108,6 @@ export default function ChatTab({ send, agents, messages, setMessages, isStreami
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Typing status */}
-      {isStreaming && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 20px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
-          </div>
-          <span>Brain đang trả lời...</span>
-        </div>
-      )}
-
       {/* Input area */}
       <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--sidebar)', display: 'flex', gap: 8, alignItems: 'flex-end', flexShrink: 0 }}>
         <textarea
