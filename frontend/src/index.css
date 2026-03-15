@@ -75,6 +75,10 @@ body::before {
   from { opacity: 0; transform: scale(.95); }
   to { opacity: 1; transform: scale(1); }
 }
+@keyframes skeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 .typing-cursor { animation: blink .8s step-end infinite; }
 .typing-dot {
   width: 6px; height: 6px; border-radius: 50%;
@@ -85,5 +89,24 @@ body::before {
 .typing-dot:nth-child(3) { animation-delay: .4s; }
 .msg { animation: fadeUp .2s ease; }
 .modal { animation: modalIn .15s ease; }
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 25%,
+    rgba(255, 255, 255, 0.16) 37%,
+    rgba(255, 255, 255, 0.06) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.2s ease-in-out infinite;
+}
+html[data-theme="light"] .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.05) 25%,
+    rgba(0, 0, 0, 0.12) 37%,
+    rgba(0, 0, 0, 0.05) 63%
+  );
+  background-size: 200% 100%;
+}
 pre { overflow-x: auto; margin: 6px 0; border-radius: 8px; padding: 10px; background: rgba(0,0,0,.25); }
 pre code { font-family: var(--mono); font-size: 12px; }

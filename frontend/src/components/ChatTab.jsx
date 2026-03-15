@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { APP_CONSTANTS } from '../constants'
+import Skeleton from './Skeleton'
 
 function renderMarkdown(text) {
   return text
@@ -19,7 +20,7 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatTab({ send, agents, messages, setMessages, isStreaming, setIsStreaming, currentAgentId, setCurrentAgentId, wsReady }) {
+export default function ChatTab({ send, agents, messages, setMessages, isStreaming, setIsStreaming, currentAgentId, setCurrentAgentId, wsReady, isHistoryLoading, setIsHistoryLoading }) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
@@ -32,8 +33,9 @@ export default function ChatTab({ send, agents, messages, setMessages, isStreami
   useEffect(() => {
     if (!wsReady) return
     setMessages([])
+    setIsHistoryLoading(true)
     send({ type: 'load_history', agentId: currentAgentId, limit: APP_CONSTANTS.CHAT_HISTORY_LIMIT })
-  }, [wsReady, currentAgentId])
+  }, [wsReady, currentAgentId, send, setMessages, setIsHistoryLoading])
 
   const sendChat = useCallback(() => {
     const content = input.trim()
@@ -96,7 +98,10 @@ export default function ChatTab({ send, agents, messages, setMessages, isStreami
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--bg)' }}>
-        {messages.length === 0 && (
+        {isHistoryLoading && messages.length === 0 && (
+          <ChatHistorySkeleton />
+        )}
+        {messages.length === 0 && !isHistoryLoading && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--muted)', padding: 40 }}>
             <div style={{ fontSize: 40, opacity: .35 }}>🧠</div>
             <p style={{ fontSize: 13, color: 'var(--muted2)' }}>Start a conversation with Brain OS</p>
@@ -135,6 +140,28 @@ export default function ChatTab({ send, agents, messages, setMessages, isStreami
           {isStreaming ? '⏳' : '↑'}
         </button>
       </div>
+    </div>
+  )
+}
+
+function ChatHistorySkeleton() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 8 }}>
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} style={{ display: 'flex', gap: 10, justifyContent: i % 2 ? 'flex-end' : 'flex-start' }}>
+          {i % 2 === 0 && (
+            <Skeleton width={APP_CONSTANTS.CHAT_AVATAR_SIZE} height={APP_CONSTANTS.CHAT_AVATAR_SIZE} radius={999} />
+          )}
+          <div style={{ width: 'min(72%, 560px)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Skeleton width="100%" height={14} radius={10} />
+            <Skeleton width="85%" height={14} radius={10} />
+            <Skeleton width="55%" height={14} radius={10} />
+          </div>
+          {i % 2 === 1 && (
+            <Skeleton width={APP_CONSTANTS.CHAT_AVATAR_SIZE} height={APP_CONSTANTS.CHAT_AVATAR_SIZE} radius={999} />
+          )}
+        </div>
+      ))}
     </div>
   )
 }

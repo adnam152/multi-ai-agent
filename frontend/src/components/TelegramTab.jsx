@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { APP_CONSTANTS } from '../constants'
+import Skeleton from './Skeleton'
 
-export default function TelegramTab({ status, messages, onRefresh }) {
+export default function TelegramTab({ status, messages, isLoading, onRefresh }) {
   const [token, setToken] = useState('')
   const [ownerChatId, setOwnerChatId] = useState(status?.ownerChatId || '')
   const [testMsg, setTestMsg] = useState('')
@@ -102,8 +103,34 @@ export default function TelegramTab({ status, messages, onRefresh }) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {isLoading && (
+          <>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Skeleton width="32%" height={14} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Skeleton width="100%" height={36} radius={8} />
+                <Skeleton width={120} height={36} radius={8} />
+              </div>
+            </div>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <Skeleton width="28%" height={14} />
+              <Skeleton width="70%" height={10} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Skeleton width="100%" height={36} radius={8} />
+                <Skeleton width={88} height={36} radius={8} />
+              </div>
+            </div>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Skeleton width="25%" height={14} />
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} width="100%" height={40} radius={8} />
+              ))}
+            </div>
+          </>
+        )}
+
         {/* Notification */}
-        {(error || info) && (
+        {!isLoading && (error || info) && (
           <div style={{
             padding: '10px 14px', borderRadius: 8, fontSize: 12,
             background: error ? 'rgba(248,113,113,.1)' : 'rgba(52,211,153,.1)',
@@ -116,6 +143,7 @@ export default function TelegramTab({ status, messages, onRefresh }) {
         )}
 
         {/* Connection card */}
+        {!isLoading && (
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>
             {connected ? '✅ Bot Connected' : '🔌 Connect Bot'}
@@ -146,9 +174,10 @@ export default function TelegramTab({ status, messages, onRefresh }) {
             </div>
           )}
         </div>
+        )}
 
         {/* Owner Chat ID */}
-        {connected && (
+        {!isLoading && connected && (
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>Owner Chat ID</div>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
@@ -169,7 +198,7 @@ export default function TelegramTab({ status, messages, onRefresh }) {
         )}
 
         {/* Test send */}
-        {connected && status.ownerChatId && (
+        {!isLoading && connected && status.ownerChatId && (
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>Send Test Message</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -188,7 +217,7 @@ export default function TelegramTab({ status, messages, onRefresh }) {
         )}
 
         {/* Messages list */}
-        {messages.length > 0 && (
+        {!isLoading && messages.length > 0 && (
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10 }}>
               Recent Messages ({messages.length})

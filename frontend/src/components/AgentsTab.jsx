@@ -1,10 +1,11 @@
 import React, { useState } from 'react'
 import AgentModal from './AgentModal'
 import { APP_CONSTANTS } from '../constants'
+import Skeleton from './Skeleton'
 
 const PROVIDER_ICONS = { claude: '🟣', gemini: '🔵', openrouter: '🌐', openai: '🟢', ollama: '🦙', copilot: '🤖' }
 
-export default function AgentsTab({ agents, onRefresh }) {
+export default function AgentsTab({ agents, isLoading, onRefresh }) {
   const [viewMode, setViewMode] = useState('grid')
   const [modalAgent, setModalAgent] = useState(null)
   const [showModal, setShowModal] = useState(false)
@@ -68,7 +69,30 @@ export default function AgentsTab({ agents, onRefresh }) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-        {agents.length === 0 && (
+        {isLoading && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Skeleton width={36} height={36} radius={8} />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <Skeleton width="55%" height={12} />
+                    <Skeleton width="80%" height={10} />
+                  </div>
+                </div>
+                <Skeleton width="100%" height={10} />
+                <Skeleton width="90%" height={10} />
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <Skeleton width="33%" height={28} radius={6} />
+                  <Skeleton width="33%" height={28} radius={6} />
+                  <Skeleton width="33%" height={28} radius={6} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && agents.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 80, color: 'var(--muted)' }}>
             <div style={{ fontSize: 40, opacity: .3 }}>🤖</div>
             <p style={{ fontSize: 13 }}>No agents yet. Create your first agent!</p>
@@ -76,7 +100,7 @@ export default function AgentsTab({ agents, onRefresh }) {
           </div>
         )}
 
-        {viewMode === 'grid' ? (
+        {!isLoading && (viewMode === 'grid' ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
             {agents.map(a => <AgentCard key={a.id} agent={a} onEdit={openEdit} onDelete={handleDelete} onToggle={handleToggle} />)}
           </div>
@@ -84,7 +108,7 @@ export default function AgentsTab({ agents, onRefresh }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {agents.map(a => <AgentRow key={a.id} agent={a} onEdit={openEdit} onDelete={handleDelete} onToggle={handleToggle} />)}
           </div>
-        )}
+        ))}
       </div>
 
       {showModal && (

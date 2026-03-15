@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import Skeleton from './Skeleton'
 
 const LEVELS = ['all', 'info', 'warn', 'error', 'debug']
 const LEVEL_COLORS = { info: 'var(--cyan)', warn: 'var(--amber)', error: 'var(--red)', debug: 'var(--muted)', system: 'var(--accent)' }
@@ -8,7 +9,7 @@ function fmtTime(ts) {
   return new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-export default function LogsTab({ logs, onClear }) {
+export default function LogsTab({ logs, isLoading, onClear }) {
   const [filter, setFilter] = useState('all')
   const [autoScroll, setAutoScroll] = useState(true)
   const endRef = useRef(null)
@@ -50,12 +51,25 @@ export default function LogsTab({ logs, onClear }) {
 
       {/* Log entries */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', fontFamily: 'var(--mono)', fontSize: 12 }}>
-        {filtered.length === 0 && (
+        {isLoading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 16px' }}>
+            {Array.from({ length: 10 }).map((_, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '80px 48px 100px 1fr', gap: '0 10px', alignItems: 'center', padding: '6px 0' }}>
+                <Skeleton width="100%" height={10} radius={4} />
+                <Skeleton width="100%" height={10} radius={4} />
+                <Skeleton width="100%" height={10} radius={4} />
+                <Skeleton width="100%" height={10} radius={4} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!isLoading && filtered.length === 0 && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)' }}>
             No {filter === 'all' ? '' : filter} logs yet
           </div>
         )}
-        {filtered.map((log, i) => (
+        {!isLoading && filtered.map((log, i) => (
           <div key={i} style={{
             display: 'grid',
             gridTemplateColumns: '80px 48px 100px 1fr',

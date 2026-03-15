@@ -17,23 +17,34 @@ export default function App() {
   const [wsReady, setWsReady] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false)
   const [currentAgentId, setCurrentAgentId] = useState('brain')
 
   // ── REST queries ──────────────────────────────────────────────────────────
-  const { data: status = { brain: { available: false, model: '' }, memorySize: 0 } } =
-    useQuery({ queryKey: ['status'], queryFn: () => fetcher('/api/status'), refetchInterval: APP_CONSTANTS.STATUS_REFETCH_INTERVAL_MS })
+  const {
+    data: status = { brain: { available: false, model: '' }, memorySize: 0 },
+  } = useQuery({ queryKey: ['status'], queryFn: () => fetcher('/api/status'), refetchInterval: APP_CONSTANTS.STATUS_REFETCH_INTERVAL_MS })
 
-  const { data: agents = [], refetch: refetchAgents } =
-    useQuery({ queryKey: ['agents'], queryFn: () => fetcher('/api/agents') })
+  const {
+    data: agents = [],
+    isLoading: isAgentsLoading,
+    refetch: refetchAgents,
+  } = useQuery({ queryKey: ['agents'], queryFn: () => fetcher('/api/agents') })
 
-  const { data: logs = [] } =
-    useQuery({ queryKey: ['logs'], queryFn: () => fetcher(`/api/logs?limit=${APP_CONSTANTS.LOGS_QUERY_LIMIT}`) })
+  const {
+    data: logs = [],
+    isLoading: isLogsLoading,
+  } = useQuery({ queryKey: ['logs'], queryFn: () => fetcher(`/api/logs?limit=${APP_CONSTANTS.LOGS_QUERY_LIMIT}`) })
 
-  const { data: telegramStatus = {} } =
-    useQuery({ queryKey: ['telegram'], queryFn: () => fetcher('/api/telegram') })
+  const {
+    data: telegramStatus = {},
+    isLoading: isTelegramStatusLoading,
+  } = useQuery({ queryKey: ['telegram'], queryFn: () => fetcher('/api/telegram') })
 
-  const { data: telegramMessages = [] } =
-    useQuery({ queryKey: ['telegram-messages'], queryFn: () => fetcher('/api/telegram/messages') })
+  const {
+    data: telegramMessages = [],
+    isLoading: isTelegramMessagesLoading,
+  } = useQuery({ queryKey: ['telegram-messages'], queryFn: () => fetcher('/api/telegram/messages') })
 
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
@@ -53,6 +64,7 @@ export default function App() {
         break
       case 'ws_close':
         setWsReady(false)
+        setIsHistoryLoading(false)
         break
       case 'chat_token':
         setIsStreaming(true)
@@ -80,6 +92,7 @@ export default function App() {
         break
       case 'chat_error':
         setIsStreaming(false)
+        setIsHistoryLoading(false)
         setChatMessages(prev => [...prev, { id: Date.now(), type: 'error', content: msg.error }])
         break
       case 'log':
@@ -97,6 +110,7 @@ export default function App() {
         setChatMessages([])
         break
       case 'history':
+        setIsHistoryLoading(false)
         if (msg.messages) {
           setChatMessages(msg.messages.map((m, i) => ({
             id: i,
@@ -133,15 +147,18 @@ export default function App() {
             currentAgentId={currentAgentId}
             setCurrentAgentId={setCurrentAgentId}
             wsReady={wsReady}
+            isHistoryLoading={isHistoryLoading}
+            setIsHistoryLoading={setIsHistoryLoading}
           />
         )}
         {activeTab === 'agents' && (
-          <AgentsTab agents={agents} onRefresh={refetchAgents} />
+          <AgentsTab agents={agents} isLoading={isAgentsLoading} onRefresh={refetchAgents} />
         )}
         {activeTab === 'telegram' && (
           <TelegramTab
             status={telegramStatus}
             messages={telegramMessages}
+            isLoading={isTelegramStatusLoading || isTelegramMessagesLoading}
             onRefresh={() => {
               queryClient.invalidateQueries({ queryKey: ['telegram'] })
               queryClient.invalidateQueries({ queryKey: ['telegram-messages'] })
@@ -151,6 +168,7 @@ export default function App() {
         {activeTab === 'logs' && (
           <LogsTab
             logs={logs}
+            isLoading={isLogsLoading}
             onClear={async () => {
               await fetch('/api/logs', { method: 'DELETE' })
               queryClient.setQueryData(['logs'], [])
