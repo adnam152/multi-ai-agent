@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 const logger = require('./logger');
 const memory = require('./memory');
 
@@ -61,20 +62,28 @@ const DEFAULT_AGENTS = [
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
-function load() {
+async function load() {
+  if (db) {
+    try {
+      const { data, error } = await db.from('agents').select('*').order('created_at');
+      if (!error && data) {
+        agents = data.map(r => ({ ...r.data, id: r.id }));
+        agents = agents.map(a => ({ skills: [], contextNotes: '', autoUpdateContext: false, ...a }));
+        logger.info('system', `Agents loaded from Supabase: ${agents.length}`);
+        return;
+      }
+    } catch (e) {
+      console.warn('[agents] Supabase load failed, falling back to file:', e.message);
+    }
+  }
+  // fallback to file
   try {
     if (fs.existsSync(AGENTS_FILE)) {
       agents = JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8'));
-      // Migrate old agents: thêm fields mới nếu chưa có
-      agents = agents.map(a => ({
-        skills: [],
-        contextNotes: '',
-        autoUpdateContext: false,
-        ...a,
-      }));
+      agents = agents.map(a => ({ skills: [], contextNotes: '', autoUpdateContext: false, ...a }));
     } else {
       agents = DEFAULT_AGENTS;
-      save();
+      saveToFile();
     }
   } catch {
     agents = DEFAULT_AGENTS;
@@ -82,8 +91,25 @@ function load() {
   logger.info('system', `Agents loaded: ${agents.length}`);
 }
 
-function save() {
-  fs.writeFileSync(AGENTS_FILE, JSON.stringify(agents, null, 2));
+function saveToFile() {
+  try { fs.writeFileSync(AGENTS_FILE, JSON.stringify(agents, null, 2)); } catch {}
+}
+
+function persistAgent(agent) {
+  if (db) {
+    db.from('agents').upsert({ id: agent.id, data: agent, updated_at: new Date().toISOString() })
+      .then(({ error }) => { if (error) saveToFile(); });
+  } else {
+    saveToFile();
+  }
+}
+
+function deleteAgent(id) {
+  if (db) {
+    db.from('agents').delete().eq('id', id).catch(() => saveToFile());
+  } else {
+    saveToFile();
+  }
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -108,7 +134,7 @@ function create(data) {
     createdAt: Date.now(),
   };
   agents.push(agent);
-  save();
+  persistAgent(agent);
   logger.info('system', `Agent created: ${agent.name} (${agent.provider}/${agent.model})`);
   return agent;
 }
@@ -117,7 +143,7 @@ function update(id, data) {
   const idx = agents.findIndex(a => a.id === id);
   if (idx === -1) return null;
   agents[idx] = { ...agents[idx], ...data, id, updatedAt: Date.now() };
-  save();
+  persistAgent(agents[idx]);
   return agents[idx];
 }
 
@@ -125,7 +151,7 @@ function remove(id) {
   const idx = agents.findIndex(a => a.id === id);
   if (idx === -1) return false;
   agents.splice(idx, 1);
-  save();
+  deleteAgent(id);
   return true;
 }
 

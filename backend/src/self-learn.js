@@ -14,21 +14,36 @@
 
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 const logger = require('./logger');
 const memory = require('./memory');
 
 const LESSONS_FILE = path.join(__dirname, '../data/lessons.json');
 let lessons = [];
 
-function loadLessons() {
+async function loadLessons() {
+  if (db) {
     try {
-        if (fs.existsSync(LESSONS_FILE))
-            lessons = JSON.parse(fs.readFileSync(LESSONS_FILE, 'utf8'));
-    } catch { lessons = []; }
+      const { data } = await db.from('lessons').select('*').order('created_at');
+      if (data) { lessons = data.map(r => r.data); return; }
+    } catch (e) {
+      console.warn('[self-learn] Load failed:', e.message);
+    }
+  }
+  try {
+    if (fs.existsSync(LESSONS_FILE)) lessons = JSON.parse(fs.readFileSync(LESSONS_FILE, 'utf8'));
+  } catch { lessons = []; }
 }
 
 function saveLessons() {
-    try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch { }
+  if (db) {
+    const rows = lessons.map(l => ({ id: l.id || Date.now().toString(36), data: l }));
+    db.from('lessons').upsert(rows).catch(() => {
+      try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
+    });
+  } else {
+    try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
+  }
 }
 
 // ─── Detect if user is correcting the brain ───────────────────────────────────

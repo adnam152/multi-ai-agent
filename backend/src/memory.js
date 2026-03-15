@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 const MEMORY_FILE = path.join(__dirname, '../data/memory.json');
 const SUMMARY_FILE = path.join(__dirname, '../data/summaries.json');
@@ -26,16 +27,34 @@ let summaries = [];     // Periodic summaries to compress old context
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
-function load() {
+async function load() {
+  if (db) {
+    try {
+      const [{ data: msgs }, { data: sums }] = await Promise.all([
+        db.from('messages').select('*').order('timestamp', { ascending: true }).limit(MAX_HISTORY),
+        db.from('summaries').select('*').order('timestamp', { ascending: true }),
+      ]);
+      history = (msgs || []).map(r => ({
+        id: r.id, role: r.role, content: r.content,
+        agentId: r.agent_id, timestamp: r.timestamp, ...r.meta,
+      }));
+      summaries = (sums || []).map(r => ({
+        id: r.id, agentId: r.agent_id, summary: r.summary,
+        coveredIds: r.covered_ids, timestamp: r.timestamp,
+      }));
+      return;
+    } catch (e) {
+      console.warn('[memory] Supabase load failed, falling back to file:', e.message);
+    }
+  }
+  // fallback
   try {
-    if (fs.existsSync(MEMORY_FILE))
-      history = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
-    if (fs.existsSync(SUMMARY_FILE))
-      summaries = JSON.parse(fs.readFileSync(SUMMARY_FILE, 'utf8'));
+    if (fs.existsSync(MEMORY_FILE)) history = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
+    if (fs.existsSync(SUMMARY_FILE)) summaries = JSON.parse(fs.readFileSync(SUMMARY_FILE, 'utf8'));
   } catch { history = []; summaries = []; }
 }
 
-function save() {
+function saveToFile() {
   try {
     fs.writeFileSync(MEMORY_FILE, JSON.stringify(history.slice(-MAX_HISTORY), null, 2));
     fs.writeFileSync(SUMMARY_FILE, JSON.stringify(summaries, null, 2));
@@ -55,7 +74,15 @@ function store(role, content, agentId = 'brain', meta = {}) {
   };
   history.push(msg);
   if (history.length > MAX_HISTORY) history.shift();
-  save();
+
+  if (db) {
+    db.from('messages').insert({
+      id: msg.id, role: msg.role, content: msg.content,
+      agent_id: msg.agentId, timestamp: msg.timestamp, meta,
+    }).then(({ error }) => { if (error) saveToFile(); });
+  } else {
+    saveToFile();
+  }
   return msg;
 }
 
@@ -156,16 +183,18 @@ function assemblePrompt({
 // ─── Store a summary of old messages ──────────────────────────────────────────
 
 function storeSummary(agentId, summaryText, coveredIds) {
-  summaries.push({
-    id: Date.now().toString(36),
-    agentId,
-    summary: summaryText,
-    coveredIds,
-    timestamp: Date.now()
-  });
-  // Remove covered messages from history
+  const entry = { id: Date.now().toString(36), agentId, summary: summaryText, coveredIds, timestamp: Date.now() };
+  summaries.push(entry);
   history = history.filter(m => !coveredIds.includes(m.id));
-  save();
+
+  if (db) {
+    Promise.all([
+      db.from('summaries').insert({ id: entry.id, agent_id: entry.agentId, summary: entry.summary, covered_ids: entry.coveredIds, timestamp: entry.timestamp }),
+      db.from('messages').delete().in('id', coveredIds),
+    ]).catch(() => saveToFile());
+  } else {
+    saveToFile();
+  }
 }
 
 module.exports = {
@@ -178,9 +207,16 @@ module.exports = {
     return h.slice(-limit);
   },
   clearHistory: (agentId = null) => {
-    if (agentId) history = history.filter(m => m.agentId !== agentId);
-    else history = [];
-    save();
+    if (agentId) {
+      const ids = history.filter(m => m.agentId === agentId).map(m => m.id);
+      history = history.filter(m => m.agentId !== agentId);
+      if (db) db.from('messages').delete().in('id', ids).catch(() => {});
+    } else {
+      const ids = history.map(m => m.id);
+      history = [];
+      if (db) db.from('messages').delete().in('id', ids).catch(() => {});
+    }
+    if (!db) saveToFile();
   },
   getSummaries: () => summaries,
 };

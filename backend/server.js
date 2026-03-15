@@ -7,6 +7,9 @@
  *   npx copilot-api@latest start
  */
 
+// Load .env from project root (one level above backend/)
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -33,15 +36,7 @@ const getArg = (flag, def) => {
 const PORT = parseInt(getArg('--port', process.env.PORT || '3333'));
 const MODEL = getArg('--model', process.env.BRAIN_MODEL || 'gpt-5-mini');
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-logger.init();
-memory.init();
-agents.init();
-telegram.init(brain);
-brain.setModel(MODEL);
-
-// Check copilot-api on startup (non-blocking)
-brain.checkOllama().catch(() => {});
+// ─── Init (called at bottom in start()) ──────────────────────────────────────
 
 // ─── Express ──────────────────────────────────────────────────────────────────
 const app = express();
@@ -234,7 +229,6 @@ app.post('/api/telegram/disconnect', async (req, res) => {
 // ─── HTTP + WebSocket Server ──────────────────────────────────────────────────
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-
 wss.on('connection', (ws) => {
   logger.registerClient(ws);
   telegram.registerClient(ws);
@@ -306,9 +300,20 @@ wss.on('connection', (ws) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-server.listen(PORT, () => {
-  logger.info('system', `Brain OS running on http://localhost:${PORT}`);
-  logger.info('system', `Provider: GitHub Copilot via copilot-api (${brain.getConfig().baseUrl})`);
-  logger.info('system', `Brain model: ${MODEL}`);
-  logger.info('system', `Run 'npx copilot-api@latest start' if not already running`);
-});
+async function start() {
+  await logger.init();
+  await memory.init();
+  await agents.init();
+  await telegram.init(brain);
+  brain.setModel(MODEL);
+  brain.checkOllama().catch(() => {});
+
+  server.listen(PORT, () => {
+    logger.info('system', `Brain OS running on http://localhost:${PORT}`);
+    logger.info('system', `Provider: GitHub Copilot via copilot-api (${brain.getConfig().baseUrl})`);
+    logger.info('system', `Brain model: ${MODEL}`);
+    logger.info('system', `Run 'npx copilot-api@latest start' if not already running`);
+  });
+}
+
+start().catch(err => { console.error('Fatal startup error:', err); process.exit(1); });

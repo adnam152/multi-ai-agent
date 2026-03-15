@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 const logger = require('./logger');
 
 const CONFIG_FILE = path.join(__dirname, '../data/config.json');
@@ -24,16 +25,34 @@ let brain = null;
 // Track pending requests per chat để tránh double-reply
 const pendingChats = new Set();
 
-function loadConfig() {
+async function loadConfig() {
+  if (db) {
+    try {
+      const { data } = await db.from('config').select('*');
+      if (data) {
+        config = {};
+        data.forEach(r => { config[r.key] = r.value; });
+        return;
+      }
+    } catch (e) {
+      console.warn('[telegram] Config load failed:', e.message);
+    }
+  }
   try {
-    if (fs.existsSync(CONFIG_FILE))
-      config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    if (fs.existsSync(CONFIG_FILE)) config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
   } catch { config = {}; }
 }
 
 function saveConfig(data) {
   config = { ...config, ...data };
-  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
+  if (db) {
+    const rows = Object.entries(data).map(([key, value]) => ({ key, value: String(value) }));
+    db.from('config').upsert(rows).catch(() => {
+      try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
+    });
+  } else {
+    try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
+  }
 }
 
 function broadcast(payload) {
@@ -221,9 +240,9 @@ function getStatus() {
   };
 }
 
-function init(brainModule) {
+async function init(brainModule) {
   brain = brainModule;
-  loadConfig();
+  await loadConfig();
   if (config.telegramToken) {
     setTimeout(() => {
       connect(config.telegramToken).catch(e =>

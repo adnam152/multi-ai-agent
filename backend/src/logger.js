@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 const LOG_FILE = path.join(__dirname, '../data/logs.json');
 const MAX_LOGS = 1000;
@@ -7,18 +8,27 @@ const MAX_LOGS = 1000;
 let logs = [];
 let wsClients = new Set();
 
-function loadLogs() {
-  try {
-    if (fs.existsSync(LOG_FILE)) {
-      logs = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
+async function loadLogs() {
+  if (db) {
+    try {
+      const { data } = await db.from('logs').select('*').order('timestamp', { ascending: false }).limit(MAX_LOGS);
+      if (data) { logs = data.reverse(); return; }
+    } catch (e) {
+      console.warn('[logger] Supabase load failed:', e.message);
     }
+  }
+  try {
+    if (fs.existsSync(LOG_FILE)) logs = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
   } catch { logs = []; }
 }
 
-function saveLogs() {
-  try {
-    fs.writeFileSync(LOG_FILE, JSON.stringify(logs.slice(-MAX_LOGS), null, 2));
-  } catch {}
+function saveLog(entry) {
+  if (db) {
+    db.from('logs').insert({ id: entry.id, timestamp: entry.timestamp, level: entry.level, source: entry.source, message: entry.message, data: entry.data || null })
+      .catch(() => {}); // fire-and-forget
+  } else {
+    try { fs.writeFileSync(LOG_FILE, JSON.stringify(logs.slice(-MAX_LOGS), null, 2)); } catch {}
+  }
 }
 
 function log(level, source, message, data = null) {
@@ -33,7 +43,7 @@ function log(level, source, message, data = null) {
 
   logs.push(entry);
   if (logs.length > MAX_LOGS) logs.shift();
-  saveLogs();
+  saveLog(entry);
 
   // Broadcast to all connected WS clients
   const payload = JSON.stringify({ type: 'log', entry });
@@ -59,7 +69,14 @@ module.exports = {
     if (levelFilter) result = result.filter(l => l.level === levelFilter);
     return result.slice(-limit);
   },
-  clearLogs: () => { logs = []; saveLogs(); },
+  clearLogs: () => {
+    logs = [];
+    if (db) {
+      db.from('logs').delete().neq('id', '').catch(() => {});
+    } else {
+      try { fs.writeFileSync(LOG_FILE, '[]'); } catch {}
+    }
+  },
   info:  (source, msg, data) => log('info',  source, msg, data),
   warn:  (source, msg, data) => log('warn',  source, msg, data),
   error: (source, msg, data) => log('error', source, msg, data),
