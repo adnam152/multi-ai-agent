@@ -8,13 +8,9 @@
  * Sender name: hiển thị đúng username/first_name từ Telegram
  */
 
-const fs = require('fs');
-const path = require('path');
 const db = require('./db');
 const logger = require('./logger');
 const { TELEGRAM_CONSTANTS } = require('./constants');
-
-const CONFIG_FILE = path.join(__dirname, '../data/config.json');
 
 let bot = null;
 let botInfo = null;
@@ -27,37 +23,22 @@ let brain = null;
 const pendingChats = new Set();
 
 async function loadConfig() {
-  if (db) {
-    try {
-      const { data } = await db.from('config').select('*');
-      if (data) {
-        config = {};
-        data.forEach(r => { config[r.key] = r.value; });
-        return;
-      }
-    } catch (e) {
-      console.warn('[telegram] Config load failed:', e.message);
-    }
-  }
-  try {
-    if (fs.existsSync(CONFIG_FILE)) config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch { config = {}; }
+  const { data, error } = await db.from('config').select('*');
+  if (error) throw new Error(`[telegram] Config load failed: ${error.message}`);
+  config = {};
+  (data || []).forEach(r => { config[r.key] = r.value; });
 }
 
 function saveConfig(data) {
   config = { ...config, ...data };
-  if (db) {
-    const rows = Object.entries(data).map(([key, value]) => ({ key, value: String(value) }));
-    (async () => {
-      try {
-        await db.from('config').upsert(rows);
-      } catch {
-        try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
-      }
-    })();
-  } else {
-    try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch {}
-  }
+  const rows = Object.entries(data).map(([key, value]) => ({ key, value: String(value) }));
+  (async () => {
+    try {
+      await db.from('config').upsert(rows);
+    } catch (err) {
+      logger.warn('telegram', `Config persist failed: ${err.message}`);
+    }
+  })();
 }
 
 function broadcast(payload) {

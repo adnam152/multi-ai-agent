@@ -11,13 +11,8 @@
  * Messages are re-sorted by timestamp before being sent, so the LLM sees them in order.
  */
 
-const fs = require('fs');
-const path = require('path');
 const db = require('./db');
 const { MEMORY_CONSTANTS } = require('./constants');
-
-const MEMORY_FILE = path.join(__dirname, '../data/memory.json');
-const SUMMARY_FILE = path.join(__dirname, '../data/summaries.json');
 
 let history = [];       // Full history array
 let summaries = [];     // Periodic summaries to compress old context
@@ -25,37 +20,22 @@ let summaries = [];     // Periodic summaries to compress old context
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
 async function load() {
-  if (db) {
-    try {
-      const [{ data: msgs }, { data: sums }] = await Promise.all([
-        db.from('messages').select('*').order('timestamp', { ascending: true }).limit(MEMORY_CONSTANTS.MAX_HISTORY),
-        db.from('summaries').select('*').order('timestamp', { ascending: true }),
-      ]);
-      history = (msgs || []).map(r => ({
-        id: r.id, role: r.role, content: r.content,
-        agentId: r.agent_id, timestamp: r.timestamp, ...r.meta,
-      }));
-      summaries = (sums || []).map(r => ({
-        id: r.id, agentId: r.agent_id, summary: r.summary,
-        coveredIds: r.covered_ids, timestamp: r.timestamp,
-      }));
-      return;
-    } catch (e) {
-      console.warn('[memory] Supabase load failed, falling back to file:', e.message);
-    }
-  }
-  // fallback
-  try {
-    if (fs.existsSync(MEMORY_FILE)) history = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
-    if (fs.existsSync(SUMMARY_FILE)) summaries = JSON.parse(fs.readFileSync(SUMMARY_FILE, 'utf8'));
-  } catch { history = []; summaries = []; }
-}
+  const [{ data: msgs, error: msgError }, { data: sums, error: sumError }] = await Promise.all([
+    db.from('messages').select('*').order('timestamp', { ascending: true }).limit(MEMORY_CONSTANTS.MAX_HISTORY),
+    db.from('summaries').select('*').order('timestamp', { ascending: true }),
+  ]);
 
-function saveToFile() {
-  try {
-    fs.writeFileSync(MEMORY_FILE, JSON.stringify(history.slice(-MEMORY_CONSTANTS.MAX_HISTORY), null, 2));
-    fs.writeFileSync(SUMMARY_FILE, JSON.stringify(summaries, null, 2));
-  } catch {}
+  if (msgError) throw new Error(`[memory] Failed to load messages: ${msgError.message}`);
+  if (sumError) throw new Error(`[memory] Failed to load summaries: ${sumError.message}`);
+
+  history = (msgs || []).map(r => ({
+    id: r.id, role: r.role, content: r.content,
+    agentId: r.agent_id, timestamp: r.timestamp, ...r.meta,
+  }));
+  summaries = (sums || []).map(r => ({
+    id: r.id, agentId: r.agent_id, summary: r.summary,
+    coveredIds: r.covered_ids, timestamp: r.timestamp,
+  }));
 }
 
 // ─── Store a message ──────────────────────────────────────────────────────────
@@ -72,14 +52,12 @@ function store(role, content, agentId = 'brain', meta = {}) {
   history.push(msg);
   if (history.length > MEMORY_CONSTANTS.MAX_HISTORY) history.shift();
 
-  if (db) {
-    db.from('messages').insert({
-      id: msg.id, role: msg.role, content: msg.content,
-      agent_id: msg.agentId, timestamp: msg.timestamp, meta,
-    }).then(({ error }) => { if (error) saveToFile(); });
-  } else {
-    saveToFile();
-  }
+  db.from('messages').insert({
+    id: msg.id, role: msg.role, content: msg.content,
+    agent_id: msg.agentId, timestamp: msg.timestamp, meta,
+  }).then(({ error }) => {
+    if (error) console.warn(`[memory] Failed to persist message ${msg.id}: ${error.message}`);
+  });
   return msg;
 }
 
@@ -184,14 +162,12 @@ function storeSummary(agentId, summaryText, coveredIds) {
   summaries.push(entry);
   history = history.filter(m => !coveredIds.includes(m.id));
 
-  if (db) {
-    Promise.all([
-      db.from('summaries').insert({ id: entry.id, agent_id: entry.agentId, summary: entry.summary, covered_ids: entry.coveredIds, timestamp: entry.timestamp }),
-      db.from('messages').delete().in('id', coveredIds),
-    ]).catch(() => saveToFile());
-  } else {
-    saveToFile();
-  }
+  Promise.all([
+    db.from('summaries').insert({ id: entry.id, agent_id: entry.agentId, summary: entry.summary, covered_ids: entry.coveredIds, timestamp: entry.timestamp }),
+    db.from('messages').delete().in('id', coveredIds),
+  ]).catch((err) => {
+    console.warn(`[memory] Failed to persist summary ${entry.id}: ${err.message}`);
+  });
 }
 
 module.exports = {
@@ -208,25 +184,24 @@ module.exports = {
     if (agentId) {
       const ids = history.filter(m => m.agentId === agentId).map(m => m.id);
       history = history.filter(m => m.agentId !== agentId);
-      if (db) {
-        (async () => {
-          try {
-            await db.from('messages').delete().in('id', ids);
-          } catch {}
-        })();
-      }
+      (async () => {
+        try {
+          await db.from('messages').delete().in('id', ids);
+        } catch (err) {
+          console.warn(`[memory] Failed to clear history for ${agentId}: ${err.message}`);
+        }
+      })();
     } else {
       const ids = history.map(m => m.id);
       history = [];
-      if (db) {
-        (async () => {
-          try {
-            await db.from('messages').delete().in('id', ids);
-          } catch {}
-        })();
-      }
+      (async () => {
+        try {
+          await db.from('messages').delete().in('id', ids);
+        } catch (err) {
+          console.warn(`[memory] Failed to clear global history: ${err.message}`);
+        }
+      })();
     }
-    if (!db) saveToFile();
   },
   getSummaries: () => summaries,
 };

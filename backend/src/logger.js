@@ -1,46 +1,30 @@
-const fs = require('fs');
-const path = require('path');
 const db = require('./db');
 const { APP_CONSTANTS, LOGGER_CONSTANTS } = require('./constants');
-
-const LOG_FILE = path.join(__dirname, '../data/logs.json');
 
 let logs = [];
 let wsClients = new Set();
 
 async function loadLogs() {
-  if (db) {
-    try {
-      const { data } = await db.from('logs').select('*').order('timestamp', { ascending: false }).limit(LOGGER_CONSTANTS.MAX_LOGS);
-      if (data) { logs = data.reverse(); return; }
-    } catch (e) {
-      console.warn('[logger] Supabase load failed:', e.message);
-    }
-  }
-  try {
-    if (fs.existsSync(LOG_FILE)) logs = JSON.parse(fs.readFileSync(LOG_FILE, 'utf8'));
-  } catch { logs = []; }
+  const { data, error } = await db.from('logs').select('*').order('timestamp', { ascending: false }).limit(LOGGER_CONSTANTS.MAX_LOGS);
+  if (error) throw new Error(`[logger] Failed to load logs: ${error.message}`);
+  logs = data ? data.reverse() : [];
 }
 
 function saveLog(entry) {
-  if (db) {
-    (async () => {
-      try {
-        await db.from('logs').insert({
-          id: entry.id,
-          timestamp: entry.timestamp,
-          level: entry.level,
-          source: entry.source,
-          message: entry.message,
-          data: entry.data || null,
-        });
-      } catch {
-        // fire-and-forget
-      }
-    })();
-  } else {
-    try { fs.writeFileSync(LOG_FILE, JSON.stringify(logs.slice(-LOGGER_CONSTANTS.MAX_LOGS), null, 2)); } catch {}
-  }
+  (async () => {
+    try {
+      await db.from('logs').insert({
+        id: entry.id,
+        timestamp: entry.timestamp,
+        level: entry.level,
+        source: entry.source,
+        message: entry.message,
+        data: entry.data || null,
+      });
+    } catch {
+      // fire-and-forget
+    }
+  })();
 }
 
 function log(level, source, message, data = null) {
@@ -83,15 +67,11 @@ module.exports = {
   },
   clearLogs: () => {
     logs = [];
-    if (db) {
-      (async () => {
-        try {
-          await db.from('logs').delete().neq('id', '');
-        } catch {}
-      })();
-    } else {
-      try { fs.writeFileSync(LOG_FILE, '[]'); } catch {}
-    }
+    (async () => {
+      try {
+        await db.from('logs').delete().neq('id', '');
+      } catch {}
+    })();
   },
   info:  (source, msg, data) => log('info',  source, msg, data),
   warn:  (source, msg, data) => log('warn',  source, msg, data),

@@ -285,7 +285,6 @@ const SAFE_FILE_DIRS = [
   path.join(os.homedir(), 'brain-os'),
   path.join(os.homedir(), 'workspace'),
   path.join(os.homedir(), 'Documents'),
-  PATH_CONSTANTS.DATA_DIR,
   path.join(PATH_CONSTANTS.BACKEND_ROOT, 'workspace'),
 ];
 

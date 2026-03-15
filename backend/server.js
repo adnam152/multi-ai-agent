@@ -13,13 +13,8 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const path = require('path');
-const fs = require('fs');
 const { APP_CONSTANTS, PATH_CONSTANTS } = require('./src/constants');
-
-// ─── Ensure data directory ────────────────────────────────────────────────────
-const DATA_DIR = PATH_CONSTANTS.DATA_DIR;
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const db = require('./src/db');
 
 // ─── Modules ──────────────────────────────────────────────────────────────────
 const logger = require('./src/logger');
@@ -59,6 +54,7 @@ app.get('/api/status', async (req, res) => {
       provider: 'copilot',
       baseUrl: brainConfig.baseUrl,
     },
+    supabase: db.getStatus(),
     telegram: telegram.getStatus(),
     memorySize: memory.getHistory().length,
     agentCount: agents.getAll().length,
@@ -175,8 +171,9 @@ app.get('/api/lessons', (req, res) => {
   res.json({ lessons: selfLearn.getLessons(), count: selfLearn.getLessonCount() });
 });
 app.delete('/api/lessons', (req, res) => {
-  const f = path.join(DATA_DIR, 'lessons.json');
-  try { fs.writeFileSync(f, APP_CONSTANTS.EMPTY_JSON_ARRAY); } catch { }
+  if (selfLearn && typeof selfLearn.clearLessons === 'function') {
+    selfLearn.clearLessons();
+  }
   res.json({ ok: true });
 });
 
@@ -302,6 +299,15 @@ wss.on('connection', (ws) => {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function start() {
+  try {
+    await db.assertConnection();
+  } catch (err) {
+    console.error('[startup] Supabase is required but unavailable.');
+    console.error(`[startup] ${err.message}`);
+    console.error('[startup] Check SUPABASE_URL and SUPABASE_SERVICE_KEY in .env');
+    process.exit(1);
+  }
+
   await logger.init();
   await memory.init();
   await agents.init();

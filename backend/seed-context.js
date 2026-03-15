@@ -9,23 +9,11 @@
  *   node seed-context.js --reset
  */
 
-const fs = require('fs');
-const path = require('path');
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const { MEMORY_CONSTANTS, LOGGER_CONSTANTS } = require('./src/constants');
-
-const DATA_DIR = path.join(__dirname, 'data');
-const MEMORY_FILE = path.join(DATA_DIR, 'memory.json');
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const db = require('./src/db');
 
 const reset = process.argv.includes('--reset');
-
-let memory = [];
-if (!reset && fs.existsSync(MEMORY_FILE)) {
-  try { memory = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8')); } catch {}
-}
-
-memory = memory.filter(m => !m._seeded);
 
 const now = Date.now();
 const ts = (offsetMinutes) => now - offsetMinutes * 60 * 1000;
@@ -46,7 +34,7 @@ const seeds = [
 - **Prompt Assembler**: lọc context thông minh (recency 50% + keyword 40% + role 10%), budget 10000 tokens
 - **Agents**: AI chuyên biệt với skills + context riêng (Claude, Gemini, OpenRouter, OpenAI, Copilot)
 - **14 Tools**: thời gian, agents, system, CLI, pipeline, file I/O, HTTP request, web search, Telegram
-- **Memory**: DB-first, fallback file trong backend/data
+- **Memory**: lưu trên Supabase (bắt buộc)
 - **Telegram**: điều khiển từ xa
 - **Web UI**: React + Vite, backend serve frontend/dist
 
@@ -76,7 +64,7 @@ Không cần Ollama. Orchestrator dùng Copilot Pro (free models: gpt-4.1-mini, 
 │   │   ├── telegram.js
 │   │   ├── db.js
 │   │   └── constants.js
-│   └── data/          # fallback JSON khi không dùng DB
+│   └── (không dùng data fallback)
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx
@@ -226,23 +214,57 @@ Roadmap:
   },
 ];
 
-// Append _seeded flag
+// Append seeded meta
 const seededEntries = seeds.map(s => ({
-  ...s,
-  agentId: 'brain',
   id: Date.now().toString(36) + Math.random().toString(36).slice(2, 2 + LOGGER_CONSTANTS.RANDOM_ID_SUFFIX_LENGTH),
-  _seeded: true,
+  role: s.role,
+  content: s.content,
+  agent_id: 'brain',
+  timestamp: s.timestamp,
+  meta: { _seeded: true },
 }));
 
-memory.push(...seededEntries);
+async function run() {
+  try {
+    await db.assertConnection();
+  } catch (err) {
+    console.error(`❌ ${err.message}`);
+    process.exit(1);
+  }
 
-if (memory.length > MEMORY_CONSTANTS.MAX_HISTORY) {
-  memory = memory.filter(m => m._seeded).concat(
-    memory.filter(m => !m._seeded).slice(-MEMORY_CONSTANTS.MAX_HISTORY + seededEntries.length)
-  );
+  if (reset) {
+    const { error } = await db.from('messages').delete().neq('id', '');
+    if (error) {
+      console.error(`❌ Failed to reset messages: ${error.message}`);
+      process.exit(1);
+    }
+  } else {
+    const { error } = await db.from('messages').delete().eq('agent_id', 'brain').contains('meta', { _seeded: true });
+    if (error) {
+      console.error(`❌ Failed to remove old seeded entries: ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  const { error: insertError } = await db.from('messages').insert(seededEntries);
+  if (insertError) {
+    console.error(`❌ Failed to seed context: ${insertError.message}`);
+    process.exit(1);
+  }
+
+  const { count, error: countError } = await db.from('messages').select('id', { head: true, count: 'exact' });
+  if (countError) {
+    console.error(`❌ Failed to count messages: ${countError.message}`);
+    process.exit(1);
+  }
+
+  if (count > MEMORY_CONSTANTS.MAX_HISTORY) {
+    console.warn(`⚠️ Message count (${count}) exceeds MEMORY_CONSTANTS.MAX_HISTORY (${MEMORY_CONSTANTS.MAX_HISTORY}).`);
+  }
+
+  console.log(`✅ Seeded ${seededEntries.length} entries into Supabase memory`);
+  console.log(`   Total messages: ${count}`);
+  if (reset) console.log('   (Full reset performed)');
 }
 
-fs.writeFileSync(MEMORY_FILE, JSON.stringify(memory, null, 2));
-console.log(`✅ Seeded ${seededEntries.length} entries into brain memory`);
-console.log(`   Total messages: ${memory.length}`);
-if (reset) console.log('   (Full reset performed)');
+run();

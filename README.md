@@ -7,7 +7,7 @@ Orchestrator: **GitHub Copilot** (qua `copilot-api`) — không cần Ollama, kh
 Kiến trúc hiện tại: **backend + frontend tách riêng**.
 - Backend: `backend/` (Express + WebSocket + tools + memory + telegram)
 - Frontend: `frontend/` (React + Vite + Tailwind)
-- Runtime data fallback: `backend/data/`
+- Persistence: Supabase (bắt buộc)
 
 ---
 
@@ -158,7 +158,7 @@ POST /api/telegram/disconnect  — ngắt kết nối bot
 
 ---
 
-## Environment Variables (tùy chọn)
+## Environment Variables
 
 ```bash
 # Chỉ cần nếu dùng Claude/Gemini/OpenRouter làm agent (không cần cho Copilot)
@@ -170,7 +170,7 @@ OPENAI_API_KEY=...
 # (Tuỳ chọn) OpenRouter referer override
 OPENROUTER_REFERER=http://localhost:3333
 
-# Supabase (nếu muốn dùng DB thay cho file fallback)
+# Supabase (bắt buộc)
 SUPABASE_URL=...
 SUPABASE_SERVICE_KEY=...
 
@@ -183,7 +183,7 @@ BRAIN_MODEL=gpt-5-mini
 ```
 
 Lưu ý Telegram:
-- Token được nhập từ UI/API `/api/telegram/connect` và lưu vào DB (hoặc fallback file `backend/data/config.json`).
+- Token được nhập từ UI/API `/api/telegram/connect` và lưu vào Supabase (`config`).
 - Hiện runtime chưa đọc token Telegram trực tiếp từ env.
 
 ---

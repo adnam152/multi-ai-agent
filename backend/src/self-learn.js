@@ -12,43 +12,38 @@
  * KHÔNG thay đổi model weights — đây là behavioral learning qua context.
  */
 
-const fs = require('fs');
-const path = require('path');
 const db = require('./db');
 const logger = require('./logger');
 const memory = require('./memory');
 const { SELF_LEARN_CONSTANTS } = require('./constants');
-
-const LESSONS_FILE = path.join(__dirname, '../data/lessons.json');
 let lessons = [];
 
 async function loadLessons() {
-  if (db) {
-    try {
-      const { data } = await db.from('lessons').select('*').order('created_at');
-      if (data) { lessons = data.map(r => r.data); return; }
-    } catch (e) {
-      console.warn('[self-learn] Load failed:', e.message);
-    }
-  }
-  try {
-    if (fs.existsSync(LESSONS_FILE)) lessons = JSON.parse(fs.readFileSync(LESSONS_FILE, 'utf8'));
-  } catch { lessons = []; }
+    const { data, error } = await db.from('lessons').select('*').order('created_at');
+    if (error) throw new Error(`[self-learn] Load failed: ${error.message}`);
+    lessons = data ? data.map(r => r.data) : [];
 }
 
 function saveLessons() {
-  if (db) {
     const rows = lessons.map(l => ({ id: l.id || Date.now().toString(36), data: l }));
-        (async () => {
-            try {
-                await db.from('lessons').upsert(rows);
-            } catch {
-                try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
-            }
-        })();
-  } else {
-    try { fs.writeFileSync(LESSONS_FILE, JSON.stringify(lessons, null, 2)); } catch {}
-  }
+    (async () => {
+        try {
+            await db.from('lessons').upsert(rows);
+        } catch (err) {
+            logger.warn('self-learn', `Persist lessons failed: ${err.message}`);
+        }
+    })();
+}
+
+function clearLessons() {
+    lessons = [];
+    (async () => {
+        try {
+            await db.from('lessons').delete().neq('id', '');
+        } catch (err) {
+            logger.warn('self-learn', `Clear lessons failed: ${err.message}`);
+        }
+    })();
 }
 
 // ─── Detect if user is correcting the brain ───────────────────────────────────
@@ -221,4 +216,5 @@ module.exports = {
     buildLessonsContext,
     getLessons: () => lessons,
     getLessonCount: () => lessons.length,
+    clearLessons,
 };

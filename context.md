@@ -30,7 +30,6 @@ multi-ai-agent/
 │   │   ├── telegram.js
 │   │   ├── db.js
 │   │   └── constants.js
-│   └── data/                  # file fallback khi không dùng Supabase
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx
@@ -68,20 +67,11 @@ node backend/server.js --port 3399
 
 ## Storage model
 
-Hiện tại là mô hình **DB-first, file-fallback**:
+Hiện tại là mô hình **Supabase-only**:
 
-- Nếu có `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`:
-  - đọc/ghi qua Supabase tables (`agents`, `messages`, `summaries`, `lessons`, `logs`, `config`)
-- Nếu không có DB hoặc DB lỗi:
-  - fallback sang JSON file trong `backend/data/`
-
-File fallback:
-- `backend/data/agents.json`
-- `backend/data/memory.json`
-- `backend/data/summaries.json`
-- `backend/data/lessons.json`
-- `backend/data/logs.json`
-- `backend/data/config.json`
+- Bắt buộc có `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`
+- Backend fail-fast khi thiếu env hoặc không kết nối được Supabase
+- Toàn bộ dữ liệu runtime đọc/ghi qua Supabase tables: `agents`, `messages`, `summaries`, `lessons`, `logs`, `config`
 
 ---
 
@@ -141,7 +131,7 @@ Server -> Client:
 
 - Frontend build có thể fail nếu chưa cài deps trong `frontend/node_modules`.
 - `EADDRINUSE` xuất hiện nếu cổng 3333 đang bị chiếm; đổi cổng qua `--port`.
-- Telegram token hiện lưu qua flow API/UI (`/api/telegram/connect`), không lấy trực tiếp từ env ở runtime.
+- Telegram token lưu qua flow API/UI (`/api/telegram/connect`) vào Supabase `config`, không lấy trực tiếp từ env ở runtime.
 
 ---
 

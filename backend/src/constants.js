@@ -9,13 +9,11 @@ const APP_CONSTANTS = {
   DEFAULT_MEMORY_API_LIMIT: 100,
   DEFAULT_LOGS_API_LIMIT: 200,
   DEFAULT_WS_HISTORY_LIMIT: 30,
-  EMPTY_JSON_ARRAY: '[]',
   LOG_PREVIEW_LENGTH: 80,
 };
 
 const PATH_CONSTANTS = {
   BACKEND_ROOT: path.join(__dirname, '..'),
-  DATA_DIR: path.join(__dirname, '..', 'data'),
   FRONTEND_DIST_DIR: path.join(__dirname, '..', '..', 'frontend', 'dist'),
 };
 

@@ -14,14 +14,10 @@
  *   Không cần API key — dùng chung auth của copilot-api
  */
 
-const fs = require('fs');
-const path = require('path');
 const db = require('./db');
 const logger = require('./logger');
 const memory = require('./memory');
 const { APP_CONSTANTS, AGENT_CONSTANTS } = require('./constants');
-
-const AGENTS_FILE = path.join(__dirname, '../data/agents.json');
 
 let agents = [];
 
@@ -64,59 +60,38 @@ const DEFAULT_AGENTS = [
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
 async function load() {
-  if (db) {
-    try {
-      const { data, error } = await db.from('agents').select('*').order('created_at');
-      if (!error && data) {
-        agents = data.map(r => ({ ...r.data, id: r.id }));
-        agents = agents.map(a => ({ skills: [], contextNotes: '', autoUpdateContext: false, ...a }));
-        logger.info('system', `Agents loaded from Supabase: ${agents.length}`);
-        return;
-      }
-    } catch (e) {
-      console.warn('[agents] Supabase load failed, falling back to file:', e.message);
-    }
-  }
-  // fallback to file
-  try {
-    if (fs.existsSync(AGENTS_FILE)) {
-      agents = JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8'));
-      agents = agents.map(a => ({ skills: [], contextNotes: '', autoUpdateContext: false, ...a }));
-    } else {
-      agents = DEFAULT_AGENTS;
-      saveToFile();
-    }
-  } catch {
-    agents = DEFAULT_AGENTS;
-  }
-  logger.info('system', `Agents loaded: ${agents.length}`);
-}
+  const { data, error } = await db.from('agents').select('*').order('created_at');
+  if (error) throw new Error(`[agents] Failed to load agents: ${error.message}`);
 
-function saveToFile() {
-  try { fs.writeFileSync(AGENTS_FILE, JSON.stringify(agents, null, 2)); } catch {}
+  if (!data || data.length === 0) {
+    agents = DEFAULT_AGENTS;
+    await Promise.all(DEFAULT_AGENTS.map(agent =>
+      db.from('agents').upsert({ id: agent.id, data: agent, updated_at: new Date().toISOString() })
+    ));
+    logger.info('system', `Default agents seeded to Supabase: ${agents.length}`);
+    return;
+  }
+
+  agents = data.map(r => ({ ...r.data, id: r.id }));
+  agents = agents.map(a => ({ skills: [], contextNotes: '', autoUpdateContext: false, ...a }));
+  logger.info('system', `Agents loaded from Supabase: ${agents.length}`);
 }
 
 function persistAgent(agent) {
-  if (db) {
-    db.from('agents').upsert({ id: agent.id, data: agent, updated_at: new Date().toISOString() })
-      .then(({ error }) => { if (error) saveToFile(); });
-  } else {
-    saveToFile();
-  }
+  db.from('agents').upsert({ id: agent.id, data: agent, updated_at: new Date().toISOString() })
+    .then(({ error }) => {
+      if (error) logger.warn('agents', `Persist failed for ${agent.id}: ${error.message}`);
+    });
 }
 
 function deleteAgent(id) {
-  if (db) {
-    (async () => {
-      try {
-        await db.from('agents').delete().eq('id', id);
-      } catch {
-        saveToFile();
-      }
-    })();
-  } else {
-    saveToFile();
-  }
+  (async () => {
+    try {
+      await db.from('agents').delete().eq('id', id);
+    } catch (err) {
+      logger.warn('agents', `Delete failed for ${id}: ${err.message}`);
+    }
+  })();
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
