@@ -1,726 +1,940 @@
-// ─── Theme ────────────────────────────────────────────────────────────────────
-function applyTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('brain-os-theme', theme);
-    const isLight = theme === 'light';
-    document.getElementById('theme-icon').textContent = isLight ? '🌙' : '☀️';
-    document.getElementById('theme-label').textContent = isLight ? 'Dark mode' : 'Light mode';
-}
-function toggleTheme() {
-    const current = document.documentElement.getAttribute('data-theme');
-    applyTheme(current === 'light' ? 'dark' : 'light');
-}
-// Init theme
-(function () {
-    const saved = localStorage.getItem('brain-os-theme') || 'dark';
-    applyTheme(saved);
-})();
+/* ═══════════════════════════════════════════════════════════════
+   Brain OS — app.js  (complete, v2)
+   ═══════════════════════════════════════════════════════════════ */
 
-// ─── WebSocket ────────────────────────────────────────────────────────────────
-let ws, wsReady = false, reconnectTimer;
-let currentAgent = 'brain';
-let logFilter = 'all';
-let logCount = 0;
-let autoscroll = true;
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws = null;
+let wsReady = false;
+let reconnectTimer = null;
 let isStreaming = false;
 let currentMsgBubble = null;
-let currentResponseDiv = null;
+let historyOffset = 0;
+const HISTORY_PAGE = 30;
+let currentAgentId = 'brain';
+let agentViewMode = 'canvas'; // 'canvas' | 'grid'
+let autoScrollEnabled = true;
+let currentLogLevel = 'all';
+let allLogs = [];
 
-const defaultModels = { claude: 'claude-opus-4-5', gemini: 'gemini-2.0-flash', openai: 'gpt-4o', ollama: 'qwen2.5:3b' };
+// ── Copilot models ────────────────────────────────────────────────────────────
+const COPILOT_MODELS = [
+  // Free (0x premium)
+  { id: 'gpt-5-mini',                   label: 'GPT-5 Mini · Free' },
+  { id: 'gpt-4.1',                      label: 'GPT-4.1 · Free' },
+  { id: 'gpt-4o',                       label: 'GPT-4o · Free' },
+  { id: 'raptor-mini',                  label: 'Raptor Mini Preview · Free' },
+  // Discount (0.25x – 0.33x)
+  { id: 'grok-code-fast-1',             label: 'Grok Code Fast 1 · 0.25x' },
+  { id: 'claude-haiku-4-5',             label: 'Claude Haiku 4.5 · 0.33x' },
+  { id: 'gemini-3-flash',               label: 'Gemini 3 Flash Preview · 0.33x' },
+  { id: 'gpt-5.1-codex-mini',           label: 'GPT-5.1 Codex Mini Preview · 0.33x' },
+  // Standard (1x)
+  { id: 'gemini-2.5-pro',               label: 'Gemini 2.5 Pro · 1x' },
+  { id: 'gemini-3-pro',                 label: 'Gemini 3 Pro Preview · 1x' },
+  { id: 'gemini-3.1-pro',               label: 'Gemini 3.1 Pro Preview · 1x' },
+  { id: 'gpt-5.1',                      label: 'GPT-5.1 · 1x' },
+  { id: 'gpt-5.1-codex',               label: 'GPT-5.1 Codex · 1x' },
+  { id: 'gpt-5.1-codex-max',           label: 'GPT-5.1 Codex Max · 1x' },
+  { id: 'gpt-5.2',                      label: 'GPT-5.2 · 1x' },
+  { id: 'gpt-5.2-codex',               label: 'GPT-5.2 Codex · 1x' },
+  { id: 'gpt-5.3-codex',               label: 'GPT-5.3 Codex · 1x' },
+];
 
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function fmtTime(ts) {
+  return new Date(ts).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function applyTheme(dark) {
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  const icon = document.getElementById('theme-icon');
+  const label = document.getElementById('theme-label');
+  if (icon) icon.textContent = dark ? '🌙' : '☀️';
+  if (label) label.textContent = dark ? 'Dark mode' : 'Light mode';
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  applyTheme(!isDark);
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const tabEl = document.getElementById(`tab-${tab}`);
+  if (tabEl) tabEl.classList.add('active');
+  const navEl = document.querySelector(`.nav-item[data-tab="${tab}"]`);
+  if (navEl) navEl.classList.add('active');
+}
+
+// ── Modal tab switching ───────────────────────────────────────────────────────
+function switchModalTab(tab) {
+  document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === tab;
+    btn.classList.toggle('active', active);
+    btn.style.color = active ? 'var(--accent)' : 'var(--muted)';
+    btn.style.borderBottomColor = active ? 'var(--accent)' : 'transparent';
+  });
+  document.querySelectorAll('.modal-tab-panel').forEach(panel => {
+    panel.style.display = panel.dataset.tab === tab ? '' : 'none';
+  });
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
 function connect() {
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${proto}//${location.host}`);
+  if (ws) { try { ws.close(); } catch {} }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
 
-    ws.onopen = () => {
-        wsReady = true;
-        loadStatus();
-        loadAgents().then(() => loadChatHistory(true));
-        loadLogs();
-        loadTelegram();
-    };
+  ws.onopen = () => {
+    wsReady = true;
+    loadStatus();
+    loadAgents().then(() => loadChatHistory(true));
+    loadLogs();
+    loadTelegram();
+  };
 
-    ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        handleWS(msg);
-    };
+  ws.onmessage = (e) => {
+    try { handleWS(JSON.parse(e.data)); } catch {}
+  };
 
-    ws.onclose = () => {
-        wsReady = false;
-        reconnectTimer = setTimeout(connect, 2000);
-    };
+  ws.onclose = () => {
+    wsReady = false;
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+
+  ws.onerror = () => { ws.close(); };
 }
 
 function handleWS(msg) {
-    if (msg.type === 'chat_token') {
-        if (!currentMsgBubble) {
-            appendAssistantMessage('', msg.requestId);
-        }
-        appendToken(msg.token);
-    }
-    if (msg.type === 'chat_done') {
-        finalizeMessage(msg.stats);
-        isStreaming = false;
-        document.getElementById('send-btn').disabled = false;
-    }
-    if (msg.type === 'chat_error') {
-        appendErrorMessage(msg.error);
-        isStreaming = false;
-        document.getElementById('send-btn').disabled = false;
-    }
-    if (msg.type === 'log') {
-        appendLogEntry(msg.entry);
-    }
-    if (msg.type === 'telegram_status') {
-        renderTelegramStatus(msg.status);
-    }
-    if (msg.type === 'telegram_message') {
-        appendTelegramMessage(msg.message);
-    }
-    if (msg.type === 'chat_cleared') {
-        document.getElementById('messages').innerHTML = '';
-        historyOffset = 0;
-        showEmptyState();
-    }
+  switch (msg.type) {
+    case 'chat_token':
+      if (!currentMsgBubble) appendAssistantMessage('', msg.requestId);
+      appendToken(msg.token);
+      setTypingStatusText('Brain đang trả lời...');
+      clearToolBadge();
+      break;
+    case 'tool_call':
+      appendToolCallBadge(msg.tool, msg.args);
+      setTypingStatusText(`Calling tool:`);
+      showToolBadge(msg.tool);
+      break;
+    case 'chat_done':
+      finalizeMessage(msg.stats);
+      isStreaming = false;
+      document.getElementById('send-btn').disabled = false;
+      hideTypingStatus();
+      loadAgents();
+      break;
+    case 'chat_error':
+      appendErrorMessage(msg.error);
+      isStreaming = false;
+      document.getElementById('send-btn').disabled = false;
+      hideTypingStatus();
+      break;
+    case 'log':
+      if (msg.entry) appendLogEntry(msg.entry);
+      break;
+    case 'telegram_status':
+      renderTelegramStatus(msg.status);
+      break;
+    case 'telegram_message':
+      appendTelegramMessage(msg.message);
+      break;
+    case 'chat_cleared':
+      document.getElementById('messages').innerHTML = '';
+      historyOffset = 0;
+      showEmptyState();
+      break;
+    case 'history':
+      if (msg.messages) renderHistory(msg.messages);
+      break;
+  }
 }
 
-// ─── Status ───────────────────────────────────────────────────────────────────
+// ── Status ────────────────────────────────────────────────────────────────────
 async function loadStatus() {
-    try {
-        const r = await fetch('/api/status');
-        const s = await r.json();
-        const brainDot = document.getElementById('brain-dot');
-        const brainText = document.getElementById('brain-status-text');
-        brainDot.className = 'dot ' + (s.brain.available ? 'green' : 'red');
-        brainText.textContent = `Brain: ${s.brain.model}`;
-        document.getElementById('memory-info').textContent = `Memory: ${s.memorySize} msgs`;
-        document.getElementById('agent-count').textContent = s.agentCount;
-        renderTelegramStatus(s.telegram);
-    } catch { }
-    setTimeout(loadStatus, 8000);
-}
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    const dot = document.getElementById('brain-dot');
+    const txt = document.getElementById('brain-status-text');
+    const sub = document.getElementById('brain-node-sub');
 
-// ─── Tab switching ─────────────────────────────────────────────────────────────
-function switchTab(tab) {
-    document.querySelectorAll('.nav-item').forEach(el =>
-        el.classList.toggle('active', el.dataset.tab === tab));
-    document.querySelectorAll('.tab-content').forEach(el =>
-        el.classList.toggle('active', el.id === 'tab-' + tab));
-}
-
-// ─── CHAT ─────────────────────────────────────────────────────────────────────
-function showEmptyState() {
-    const msg = document.getElementById('messages');
-    if (!msg.querySelector('.msg')) {
-        const es = document.createElement('div');
-        es.className = 'empty-state';
-        es.id = 'empty-state';
-        es.innerHTML = '<div class="big-icon">🧠</div><p>Brain OS is ready.</p>';
-        msg.appendChild(es);
-    }
-}
-
-function removeEmptyState() {
-    const es = document.getElementById('empty-state');
-    if (es) es.remove();
-}
-
-function appendUserMessage(text) {
-    removeEmptyState();
-    const msgs = document.getElementById('messages');
-    const time = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const div = document.createElement('div');
-    div.className = 'msg user';
-    div.innerHTML = `
-    <div class="msg-body">
-      <div class="msg-meta">${time}</div>
-      <div class="msg-bubble">${escHtml(text)}</div>
-    </div>
-    <div class="msg-avatar">👤</div>`;
-    msgs.appendChild(div);
-    // Typing indicator
-    const typing = document.createElement('div');
-    typing.className = 'msg assistant';
-    typing.id = 'typing-indicator';
-    typing.innerHTML = `<div class="msg-avatar">🧠</div><div class="msg-body"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
-    msgs.appendChild(typing);
-    msgs.scrollTop = msgs.scrollHeight;
-}
-
-function appendAssistantMessage(text) {
-    const indicator = document.getElementById('typing-indicator');
-    if (indicator) indicator.remove();
-
-    const msgs = document.getElementById('messages');
-    const time = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    // Tìm agent name từ selector nếu có
-    const sel = document.getElementById('agent-selector');
-    const selText = sel?.options[sel.selectedIndex]?.text || currentAgent;
-    const agentName = currentAgent === 'brain' ? '🧠 Brain' : selText;
-
-    const div = document.createElement('div');
-    div.className = 'msg assistant';
-    div.innerHTML = `
-    <div class="msg-avatar">🤖</div>
-    <div class="msg-body">
-      <div class="msg-meta"><span class="msg-agent">${escHtml(agentName)}</span> · ${time}</div>
-      <div class="msg-bubble"></div>
-    </div>`;
-    msgs.appendChild(div);
-    // FIX: dùng direct reference thay vì getElementById để không bao giờ tìm nhầm bubble cũ
-    currentMsgBubble = div.querySelector('.msg-bubble');
-    currentResponseDiv = div;
-    msgs.scrollTop = msgs.scrollHeight;
-}
-
-function appendToken(token) {
-    if (!currentMsgBubble) return;
-    currentMsgBubble.textContent += token;
-    const msgs = document.getElementById('messages');
-    msgs.scrollTop = msgs.scrollHeight;
-}
-
-function finalizeMessage(stats) {
-    if (stats) {
-        const info = `${stats.selectedMessages}/${stats.totalMessages} msgs · ~${stats.estimatedTokens} tokens`;
-        document.getElementById('live-stats').textContent = info;
-        document.getElementById('chat-context-info').textContent = info;
-    }
-    // FIX: reset cả 2 references, không dùng id nữa
-    currentMsgBubble = null;
-    currentResponseDiv = null;
-}
-
-function appendErrorMessage(error) {
-    const indicator = document.getElementById('typing-indicator');
-    if (indicator) indicator.remove();
-    const msgs = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.className = 'msg assistant';
-    div.innerHTML = `<div class="msg-avatar">⚠️</div><div class="msg-body"><div class="msg-bubble" style="color:var(--red);border-color:#ef444440">${escHtml(error)}</div></div>`;
-    msgs.appendChild(div);
-    msgs.scrollTop = msgs.scrollHeight;
-}
-
-function sendChat() {
-    if (isStreaming) return;
-    const input = document.getElementById('chat-input');
-    const text = input.value.trim();
-    if (!text || !wsReady) return;
-
-    appendUserMessage(text);
-    input.value = '';
-    autoResize(input);
-    isStreaming = true;
-    document.getElementById('send-btn').disabled = true;
-
-    ws.send(JSON.stringify({ type: 'chat', content: text, agentId: currentAgent, requestId: Date.now().toString(36) }));
-}
-
-function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
-}
-
-function autoResize(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-}
-
-function clearChat() {
-    if (confirm('Clear conversation history?'))
-        ws.send(JSON.stringify({ type: 'clear_chat', agentId: currentAgent }));
-}
-
-async function summarizeChat() {
-    const r = await fetch('/api/memory/summarize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agentId: currentAgent }) });
-    const d = await r.json();
-    if (d.summary) alert('Summary saved:\n\n' + d.summary);
-    else alert('Not enough history to summarize yet.');
-}
-
-function onAgentChange() {
-    currentAgent = document.getElementById('agent-selector').value;
-    // Xóa chat UI và load lại history của agent mới
-    document.getElementById('messages').innerHTML = '';
-    historyOffset = 0;
-    loadChatHistory(true);
-}
-
-// ─── HISTORY ──────────────────────────────────────────────────────────────────
-const HISTORY_PAGE = 30;
-let historyOffset = 0;
-let historyTotal = 0;
-
-async function loadChatHistory(isInitial = false) {
-    const r = await fetch(`/api/memory?agentId=${currentAgent}&limit=500`);
-    const all = await r.json();
-
-    // Chỉ lấy user + assistant messages, loại system
-    const msgs = all.filter(m => m.role === 'user' || m.role === 'assistant');
-    historyTotal = msgs.length;
-
-    if (!msgs.length) { showEmptyState(); return; }
-
-    removeEmptyState();
-
-    // Load more button
-    const msgs_el = document.getElementById('messages');
-    const loadMoreBtn = document.getElementById('load-more-btn');
-    if (loadMoreBtn) loadMoreBtn.remove();
-
-    const start = Math.max(0, historyTotal - historyOffset - HISTORY_PAGE);
-    const slice = msgs.slice(start, historyTotal - historyOffset);
-    const hasMore = start > 0;
-
-    if (hasMore) {
-        const btn = document.createElement('div');
-        btn.id = 'load-more-btn';
-        btn.className = 'load-more-btn';
-        btn.textContent = `Load ${Math.min(start, HISTORY_PAGE)} more messages`;
-        btn.onclick = () => {
-            historyOffset += HISTORY_PAGE;
-            loadChatHistory(false);
-        };
-        msgs_el.insertBefore(btn, msgs_el.firstChild);
-    }
-
-    // Khi load thêm (scroll up): chèn trước button hoặc đầu list
-    const anchor = isInitial ? null : msgs_el.querySelector('.load-more-btn');
-
-    // Render messages theo thứ tự
-    const fragment = document.createDocumentFragment();
-    for (const m of slice) {
-        // Kiểm tra đã render chưa (tránh duplicate khi reload)
-        if (document.querySelector(`[data-msg-id="${m.id}"]`)) continue;
-        const el = createHistoryMsgEl(m);
-        fragment.appendChild(el);
-    }
-
-    if (anchor) {
-        // Insert sau load-more button
-        anchor.after(fragment);
+    if (s.brain.available) {
+      dot.className = 'dot green';
+      txt.textContent = `Copilot: ${s.brain.model}`;
     } else {
-        msgs_el.appendChild(fragment);
-        // Chỉ scroll xuống cuối khi là lần đầu load
-        if (isInitial) msgs_el.scrollTop = msgs_el.scrollHeight;
+      dot.className = 'dot red';
+      txt.textContent = 'copilot-api offline';
     }
+    if (sub) sub.textContent = `Copilot · ${s.brain.model}`;
+
+    const mi = document.getElementById('memory-info');
+    if (mi) mi.textContent = `Memory: ${s.memorySize} msgs`;
+
+    renderTelegramStatus(s.telegram);
+  } catch {}
 }
 
-function createHistoryMsgEl(m) {
-    const div = document.createElement('div');
-    div.className = `msg ${m.role === 'user' ? 'user' : 'assistant'} history-msg`;
-    div.dataset.msgId = m.id;
-
-    const date = new Date(m.timestamp);
-    const isToday = date.toDateString() === new Date().toDateString();
-    const timeStr = isToday
-        ? date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-        : date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-    if (m.role === 'user') {
-        div.innerHTML = `
-      <div class="msg-body">
-        <div class="msg-meta">${timeStr}</div>
-        <div class="msg-bubble">${escHtml(m.content)}</div>
-      </div>
-      <div class="msg-avatar">👤</div>`;
-    } else {
-        const agentLabel = m.agentId === 'brain' ? '🧠 Brain' : (m.agentId || 'Agent');
-        div.innerHTML = `
-      <div class="msg-avatar">🤖</div>
-      <div class="msg-body">
-        <div class="msg-meta"><span class="msg-agent">${escHtml(agentLabel)}</span> · ${timeStr}</div>
-        <div class="msg-bubble">${escHtml(m.content)}</div>
-      </div>`;
-    }
-    return div;
-}
-
-// ─── AGENTS ───────────────────────────────────────────────────────────────────
-let agentViewMode = 'canvas'; // 'canvas' | 'grid'
-let orModels = []; // OpenRouter models cache
-
+// ── Agents ────────────────────────────────────────────────────────────────────
 async function loadAgents() {
-    const r = await fetch('/api/agents');
-    const list = await r.json();
-    renderAgentCanvas(list);
-    renderAgents(list);
-    updateAgentSelector(list);
-    document.getElementById('agent-count').textContent = list.length;
-    document.getElementById('agents-count-meta').textContent = list.length + ' agents';
+  const r = await fetch('/api/agents');
+  const list = await r.json();
+
+  // Update count badges
+  document.getElementById('agent-count').textContent = list.length;
+  document.getElementById('agents-count-meta').textContent = `${list.length} agents`;
+
+  // Update agent selector in chat
+  const sel = document.getElementById('agent-selector');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="brain">🧠 Brain (Copilot)</option>' +
+    list.filter(a => a.active).map(a =>
+      `<option value="${escHtml(a.id)}">${escHtml(a.name)}</option>`
+    ).join('');
+  if (list.find(a => a.id === cur)) sel.value = cur;
+
+  // Render canvas / grid
+  renderAgentNodes(list);
+  renderAgentGrid(list);
 }
 
-function toggleAgentView() {
-    agentViewMode = agentViewMode === 'canvas' ? 'grid' : 'canvas';
-    document.getElementById('agents-canvas').style.display = agentViewMode === 'canvas' ? 'flex' : 'none';
-    document.getElementById('agents-grid-view').style.display = agentViewMode === 'grid' ? 'flex' : 'none';
-    document.getElementById('view-toggle').textContent = agentViewMode === 'canvas' ? '⊞ Grid' : '◈ Canvas';
-}
+function renderAgentNodes(list) {
+  const col = document.getElementById('agent-nodes-col');
+  const connArea = document.getElementById('connector-area');
+  if (!col) return;
 
-// ── Canvas (n8n-style) ────────────────────────────────────────────────────────
-
-const providerIcon = { claude: '🎭', gemini: '✨', openrouter: '🌐', ollama: '🦙', openai: '⚡' };
-const providerColor = { claude: 'pb-claude', gemini: 'pb-gemini', openrouter: 'pb-openrouter', ollama: 'pb-ollama', openai: 'pb-openai' };
-
-function renderAgentCanvas(list) {
-    const col = document.getElementById('agent-nodes-col');
+  if (list.length === 0) {
     col.innerHTML = '';
+    connArea.style.display = 'none';
+    return;
+  }
+  connArea.style.display = 'flex';
 
-    if (!list.length) {
-        col.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px 0 0 20px">No agents yet.<br>Click + New Agent to add one.</div>';
-        document.getElementById('connector-main').style.display = 'none';
-        return;
-    }
-    document.getElementById('connector-main').style.display = 'block';
-
-    list.forEach((a, i) => {
-        const row = document.createElement('div');
-        row.className = 'node-row';
-
-        const wire = document.createElement('div');
-        wire.className = 'node-wire' + (a.active ? ' active' : '');
-        wire.style.width = '80px';
-
-        const card = document.createElement('div');
-        card.className = 'node-card' + (a.active ? '' : ' inactive');
-        card.onclick = () => editAgent(a.id);
-        const icon = providerIcon[a.provider] || '🤖';
-        const pColor = providerColor[a.provider] || '';
-        card.innerHTML = `
-      <div class="node-icon">${icon}</div>
+  col.innerHTML = list.map(a => `
+    <div class="node-card ${a.active ? '' : 'node-disabled'}" data-id="${escHtml(a.id)}">
+      <div class="node-icon">${providerIcon(a.provider)}</div>
       <div class="node-body">
         <div class="node-title">${escHtml(a.name)}</div>
-        <div class="node-sub ${pColor}">${a.provider} · ${a.model.split('/').pop()}</div>
+        <div class="node-sub">${escHtml(a.provider)} · ${escHtml(a.model)}</div>
+        ${(a.skills?.length) ? `<div class="node-tag">⚡ ${a.skills.length} skills</div>` : ''}
+        ${a.contextNotes ? `<div class="node-tag">📝 context</div>` : ''}
       </div>
-      <div class="node-status-dot ${a.active ? 'green' : 'gray'}"></div>
+      <div class="node-status-dot ${a.active ? 'green' : 'red'}"></div>
       <div class="node-actions">
-        <button class="node-action-btn" onclick="event.stopPropagation();editAgent('${a.id}')">Edit</button>
-        <button class="node-action-btn" onclick="event.stopPropagation();toggleAgent('${a.id}',${!a.active})">${a.active ? 'Disable' : 'Enable'}</button>
-        <button class="node-action-btn del" onclick="event.stopPropagation();deleteAgent('${a.id}')">Delete</button>
-      </div>`;
-
-        row.appendChild(wire);
-        row.appendChild(card);
-        col.appendChild(row);
-    });
-
-    // Fix connector-main height to center on agents
-    const brainNode = document.getElementById('node-brain');
-    const brainH = brainNode?.offsetHeight || 56;
-    const totalH = list.length * 68;
-    const midAgent = totalH / 2;
-    document.getElementById('connector-main').style.cssText = `height:1px;background:var(--border2);width:80px;margin-top:${midAgent - brainH / 2 + brainH / 2}px`;
-}
-
-// ── Grid view ──────────────────────────────────────────────────────────────────
-
-function renderAgents(list) {
-    const grid = document.getElementById('agents-grid');
-    if (!list.length) {
-        grid.innerHTML = '<div class="section-empty" style="grid-column:1/-1">No agents yet.</div>';
-        return;
-    }
-    grid.innerHTML = list.map(a => `
-    <div class="agent-card">
-      <div class="agent-card-header">
-        <div class="agent-card-name">${escHtml(a.name)}</div>
-        <span class="provider-badge provider-${a.provider}">${a.provider}</span>
-      </div>
-      <div class="agent-desc">${escHtml(a.description || '—')}</div>
-      <div class="agent-model">${a.model}</div>
-      <div class="agent-actions">
-        <button class="btn btn-ghost btn-sm" onclick="editAgent('${a.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteAgent('${a.id}')">Delete</button>
-        <div class="active-toggle">
-          <span class="toggle ${a.active ? 'on' : ''}" onclick="toggleAgent('${a.id}', ${!a.active})"></span>
-        </div>
+        <button onclick="editAgent('${escHtml(a.id)}')" class="node-btn" title="Edit">✏️</button>
+        <button onclick="toggleAgent('${escHtml(a.id)}', ${!a.active})" class="node-btn" title="${a.active ? 'Disable' : 'Enable'}">${a.active ? '⏸' : '▶️'}</button>
+        <button onclick="deleteAgent('${escHtml(a.id)}')" class="node-btn node-btn-del" title="Delete">🗑</button>
       </div>
     </div>`).join('');
 }
 
-function updateAgentSelector(list) {
-    const sel = document.getElementById('agent-selector');
-    const cur = sel.value;
-    const extra = list.map(a => `<option value="${a.id}">${a.name} (${a.provider})</option>`).join('');
-    sel.innerHTML = `<option value="brain">🧠 Brain (Local)</option>${extra}`;
-    sel.value = cur || 'brain';
+function renderAgentGrid(list) {
+  const grid = document.getElementById('agents-grid');
+  if (!grid) return;
+  grid.innerHTML = list.map(a => `
+    <div class="agent-card ${a.active ? '' : 'agent-disabled'}">
+      <div class="agent-card-header">
+        <span class="agent-icon">${providerIcon(a.provider)}</span>
+        <span class="agent-name">${escHtml(a.name)}</span>
+        <span class="dot ${a.active ? 'green' : 'red'}" style="margin-left:auto"></span>
+      </div>
+      <div class="agent-desc">${escHtml(a.description || '—')}</div>
+      <div class="agent-meta">${escHtml(a.provider)} · ${escHtml(a.model)}</div>
+      ${a.skills?.length ? `<div class="agent-tag">⚡ ${a.skills.length} skills</div>` : ''}
+      <div class="agent-card-footer">
+        <button onclick="editAgent('${escHtml(a.id)}')" class="btn btn-ghost btn-sm">Edit</button>
+        <button onclick="toggleAgent('${escHtml(a.id)}', ${!a.active})" class="btn btn-ghost btn-sm">${a.active ? 'Disable' : 'Enable'}</button>
+        <button onclick="deleteAgent('${escHtml(a.id)}')" class="btn btn-danger btn-sm">Del</button>
+      </div>
+    </div>`).join('');
 }
 
-// ── OpenRouter model fetch ─────────────────────────────────────────────────────
-
-async function fetchOpenRouterModels(apiKey) {
-    if (orModels.length) return orModels;
-    try {
-        const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
-        const r = await fetch('https://openrouter.ai/api/v1/models', { headers });
-        if (!r.ok) return [];
-        const d = await r.json();
-        orModels = (d.data || [])
-            .map(m => ({ id: m.id, name: m.name || m.id, ctx: m.context_length }))
-            .sort((a, b) => a.id.localeCompare(b.id));
-        return orModels;
-    } catch { return []; }
+function providerIcon(p) {
+  const map = { claude: '🟣', gemini: '🔵', openrouter: '🌐', openai: '🟢', ollama: '🦙', copilot: '🤖' };
+  return map[p] || '🤖';
 }
 
-function buildModelSelect(models, currentVal) {
-    const opts = models.map(m =>
-        `<option value="${escHtml(m.id)}" ${m.id === currentVal ? 'selected' : ''}>${escHtml(m.name)}</option>`
-    ).join('');
-    return `<select class="form-select" id="agent-model-select" onchange="document.getElementById('agent-model').value=this.value">${opts}</select>`;
+function toggleAgentView() {
+  agentViewMode = agentViewMode === 'canvas' ? 'grid' : 'canvas';
+  document.getElementById('agents-canvas').style.display = agentViewMode === 'canvas' ? '' : 'none';
+  document.getElementById('agents-grid-view').style.display = agentViewMode === 'grid' ? '' : 'none';
+  document.getElementById('view-toggle').textContent = agentViewMode === 'canvas' ? '⊞ Grid' : '⬡ Canvas';
 }
 
-async function onProviderChange() {
-    const p = document.getElementById('agent-provider').value;
-    const modelInput = document.getElementById('agent-model');
-    const modelWrap = document.getElementById('agent-model-wrap');
-
-    if (p === 'openrouter') {
-        modelInput.value = '';
-        modelWrap.innerHTML = `<div style="color:var(--muted);font-size:11px;font-family:var(--mono);padding:6px 0">Loading models...</div><input type="hidden" class="form-input" id="agent-model" value="auto">`;
-        const apiKey = document.getElementById('agent-apikey').value.trim();
-        const models = await fetchOpenRouterModels(apiKey);
-        // Prepend "Auto" option
-        const autoOpt = { id: 'auto', name: '✨ Auto (smart routing by context)' };
-        const allModels = [autoOpt, ...models];
-        const currentVal = document.getElementById('agent-model')?.value || 'auto';
-        modelWrap.innerHTML = buildModelSelect(allModels, currentVal) + `<input type="hidden" id="agent-model" value="${currentVal}">`;
-        document.getElementById('agent-model-select').onchange = function () {
-            document.getElementById('agent-model').value = this.value;
-        };
-        // hint
-        document.getElementById('model-hint').textContent = '— auto chọn model theo context';
-    } else {
-        const defaults = { claude: 'claude-opus-4-5', gemini: 'gemini-2.0-flash', openai: 'gpt-4o', ollama: 'qwen2.5:3b' };
-        modelWrap.innerHTML = `<input type="text" class="form-input" id="agent-model" placeholder="e.g. ${defaults[p] || 'model-name'}" value="${defaults[p] || ''}">`;
-        document.getElementById('model-hint').textContent = '';
-    }
-}
-
-function openAgentModal(data = null) {
-    document.getElementById('modal-title').textContent = data ? 'Edit Agent' : 'New Agent';
-    document.getElementById('agent-edit-id').value = data?.id || '';
-    document.getElementById('agent-name').value = data?.name || '';
-    document.getElementById('agent-desc-input').value = data?.description || '';
-    document.getElementById('agent-provider').value = data?.provider || 'claude';
-    document.getElementById('agent-apikey').value = data?.apiKey || '';
-    document.getElementById('agent-prompt').value = data?.systemPrompt || '';
-    // Reset model wrap then trigger provider change to set correct model input
-    const defaults = { claude: 'claude-opus-4-5', gemini: 'gemini-2.0-flash', openai: 'gpt-4o', ollama: 'qwen2.5:3b' };
-    const p = data?.provider || 'claude';
-    const mv = data?.model || defaults[p] || '';
-    document.getElementById('agent-model-wrap').innerHTML = `<input type="text" class="form-input" id="agent-model" value="${escHtml(mv)}">`;
-    if (p === 'openrouter') onProviderChange();
-    document.getElementById('agent-modal').classList.add('open');
-}
-
-function closeAgentModal() { document.getElementById('agent-modal').classList.remove('open'); }
-
-async function saveAgent() {
-    const id = document.getElementById('agent-edit-id').value;
-    const body = {
-        name: document.getElementById('agent-name').value.trim(),
-        description: document.getElementById('agent-desc-input').value.trim(),
-        provider: document.getElementById('agent-provider').value,
-        model: document.getElementById('agent-model').value.trim(),
-        apiKey: document.getElementById('agent-apikey').value.trim(),
-        systemPrompt: document.getElementById('agent-prompt').value.trim(),
-    };
-    if (!body.name) return alert('Name required');
-    const url = id ? `/api/agents/${id}` : '/api/agents';
-    const method = id ? 'PUT' : 'POST';
-    await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    closeAgentModal();
-    loadAgents();
-}
-
-function editAgent(id) {
-    fetch('/api/agents').then(r => r.json()).then(list => {
-        const a = list.find(x => x.id === id);
-        if (a) openAgentModal(a);
-    });
-}
-
-async function deleteAgent(id) {
-    if (!confirm('Delete this agent?')) return;
-    await fetch(`/api/agents/${id}`, { method: 'DELETE' });
-    loadAgents();
+async function editAgent(id) {
+  const r = await fetch('/api/agents');
+  const list = await r.json();
+  const a = list.find(x => x.id === id);
+  if (a) openAgentModal(a);
 }
 
 async function toggleAgent(id, active) {
-    await fetch(`/api/agents/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
-    loadAgents();
+  await fetch(`/api/agents/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active }),
+  });
+  loadAgents();
 }
 
-// ─── TELEGRAM ─────────────────────────────────────────────────────────────────
-function renderTelegramStatus(s) {
-    const dot = document.getElementById('tg-dot');
-    const text = document.getElementById('tg-status-text');
-    const title = document.getElementById('tg-card-title');
-    const sub = document.getElementById('tg-card-sub');
-    const btn = document.getElementById('tg-connect-btn');
-    const msgsSection = document.getElementById('tg-messages-section');
-    const sendCard = document.getElementById('tg-send-card');
-    const ownerDot = document.getElementById('owner-dot');
-    const ownerText = document.getElementById('owner-status-text');
-
-    dot.className = 'dot ' + (s.connected ? 'green' : 'amber');
-    text.textContent = s.connected ? `@${s.username}` : 'Telegram: —';
-    if (title) title.textContent = s.connected ? `Connected · @${s.username}` : 'Not connected';
-    if (sub) sub.textContent = s.connected ? 'Bot đang nhận tin' : 'Connect bot để điều khiển Brain OS từ xa';
-    if (btn) { btn.textContent = s.connected ? 'Disconnect' : 'Connect'; btn.className = 'btn btn-sm ' + (s.connected ? 'btn-danger' : 'btn-primary'); }
-    if (msgsSection) msgsSection.style.display = s.connected ? 'block' : 'none';
-    if (sendCard) sendCard.style.display = (s.connected && s.ownerChatId) ? 'block' : 'none';
-
-    // Owner chat ID status
-    if (ownerDot && ownerText) {
-        if (s.ownerChatId) {
-            ownerDot.className = 'dot green';
-            ownerText.textContent = `ID: ${s.ownerChatId}`;
-            document.getElementById('tg-owner-input').value = s.ownerChatId;
-            document.getElementById('test-send-btn').disabled = !s.connected;
-        } else {
-            ownerDot.className = 'dot amber';
-            ownerText.textContent = 'Chưa thiết lập';
-        }
-    }
+async function deleteAgent(id) {
+  if (!confirm('Delete this agent?')) return;
+  await fetch(`/api/agents/${id}`, { method: 'DELETE' });
+  loadAgents();
 }
 
-async function saveOwnerChatId() {
-    const chatId = document.getElementById('tg-owner-input').value.trim();
-    if (!chatId || isNaN(chatId)) return alert('Chat ID phải là số. Lấy từ @userinfobot trên Telegram.');
-    const r = await fetch('/api/telegram/owner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId }) });
+// ── Agent Modal ───────────────────────────────────────────────────────────────
+function openAgentModal(data = null) {
+  document.getElementById('modal-title').textContent = data ? 'Edit Agent' : 'New Agent';
+  document.getElementById('agent-edit-id').value = data?.id || '';
+  document.getElementById('agent-name').value = data?.name || '';
+  document.getElementById('agent-desc-input').value = data?.description || '';
+  document.getElementById('agent-apikey').value = data?.apiKey || '';
+  document.getElementById('agent-prompt').value = data?.systemPrompt || '';
+
+  const skillsEl = document.getElementById('agent-skills');
+  if (skillsEl) skillsEl.value = (data?.skills || []).join('\n');
+
+  const ctxEl = document.getElementById('agent-context-notes');
+  if (ctxEl) ctxEl.value = data?.contextNotes || '';
+
+  const autoEl = document.getElementById('agent-auto-update');
+  if (autoEl) autoEl.checked = data?.autoUpdateContext || false;
+
+  // Set provider first, then trigger model dropdown
+  const prov = data?.provider || 'copilot';
+  document.getElementById('agent-provider').value = prov;
+  onProviderChange();
+
+  // Set model after dropdown renders
+  const mv = data?.model || '';
+  setTimeout(() => {
+    const modelEl = document.getElementById('agent-model');
+    if (modelEl && mv) modelEl.value = mv;
+  }, 50);
+
+  switchModalTab('general');
+  document.getElementById('agent-modal').classList.add('open');
+}
+
+function closeAgentModal() {
+  document.getElementById('agent-modal').classList.remove('open');
+}
+
+function onProviderChange() {
+  const p = document.getElementById('agent-provider').value;
+  const wrap = document.getElementById('agent-model-wrap');
+  const hint = document.getElementById('model-hint');
+  const keyRow = document.getElementById('agent-apikey-row');
+
+  const defaults = {
+    claude: 'claude-sonnet-4-5',
+    gemini: 'gemini-2.0-flash',
+    openai: 'gpt-4o',
+    ollama: 'qwen2.5:3b',
+    copilot: 'gpt-5-mini',
+  };
+
+  // Copilot: dropdown + hide API key row
+  if (p === 'copilot') {
+    const opts = COPILOT_MODELS.map(m =>
+      `<option value="${m.id}">${escHtml(m.label)}</option>`
+    ).join('');
+    wrap.innerHTML = `<select class="form-select" id="agent-model">${opts}</select>`;
+    if (hint) hint.textContent = 'Free: gpt-5-mini, gpt-4.1-mini, gpt-4o-mini, gemini-2.0-flash';
+    if (keyRow) keyRow.style.display = 'none';
+    return;
+  }
+
+  // Show API key row for all other providers
+  if (keyRow) keyRow.style.display = '';
+
+  if (p === 'openrouter') {
+    wrap.innerHTML = `<input type="text" class="form-input" id="agent-model" placeholder="openai/gpt-4o-mini">`;
+    if (hint) hint.textContent = 'Format: provider/model-name';
+    // Try to fetch OpenRouter models
+    fetch('https://openrouter.ai/api/v1/models')
+      .then(r => r.json())
+      .then(data => {
+        const opts = (data.data || [])
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map(m => `<option value="${escHtml(m.id)}">${escHtml(m.id)}</option>`)
+          .join('');
+        wrap.innerHTML = `<select class="form-select" id="agent-model">${opts}</select>`;
+      })
+      .catch(() => {});
+    return;
+  }
+
+  // Text input for claude / gemini / openai / ollama
+  wrap.innerHTML = `<input type="text" class="form-input" id="agent-model" placeholder="${defaults[p] || 'model-name'}" value="${defaults[p] || ''}">`;
+  if (hint) hint.textContent = '';
+}
+
+async function saveAgent() {
+  const id = document.getElementById('agent-edit-id').value;
+  const skillsRaw = document.getElementById('agent-skills')?.value || '';
+  const skills = skillsRaw.split('\n').map(s => s.trim()).filter(Boolean);
+
+  const body = {
+    name: document.getElementById('agent-name').value.trim(),
+    description: document.getElementById('agent-desc-input').value.trim(),
+    provider: document.getElementById('agent-provider').value,
+    model: document.getElementById('agent-model').value.trim(),
+    apiKey: document.getElementById('agent-apikey').value.trim(),
+    systemPrompt: document.getElementById('agent-prompt').value.trim(),
+    skills,
+    contextNotes: document.getElementById('agent-context-notes')?.value || '',
+    autoUpdateContext: document.getElementById('agent-auto-update')?.checked || false,
+  };
+
+  if (!body.name) return alert('Name required');
+
+  const url = id ? `/api/agents/${id}` : '/api/agents';
+  const method = id ? 'PUT' : 'POST';
+  await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  closeAgentModal();
+  loadAgents();
+}
+
+async function clearAgentContext() {
+  const id = document.getElementById('agent-edit-id').value;
+  if (!id) { document.getElementById('agent-context-notes').value = ''; return; }
+  if (!confirm('Clear all context notes for this agent?')) return;
+  await fetch(`/api/agents/${id}/context`, { method: 'DELETE' });
+  document.getElementById('agent-context-notes').value = '';
+}
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+function onAgentChange() {
+  currentAgentId = document.getElementById('agent-selector').value;
+  document.getElementById('messages').innerHTML = '';
+  historyOffset = 0;
+  showEmptyState();
+  // Load history for selected agent
+  if (ws && wsReady) {
+    ws.send(JSON.stringify({ type: 'load_history', agentId: currentAgentId, limit: HISTORY_PAGE }));
+  }
+}
+
+async function loadChatHistory(initial = false) {
+  if (!ws || !wsReady) return;
+  ws.send(JSON.stringify({
+    type: 'load_history',
+    agentId: currentAgentId,
+    limit: HISTORY_PAGE,
+  }));
+}
+
+function renderHistory(messages) {
+  if (!messages || messages.length === 0) { showEmptyState(); return; }
+  hideEmptyState();
+  const container = document.getElementById('messages');
+  container.innerHTML = '';
+  messages.forEach(m => {
+    if (m.role === 'user') appendUserMessage(m.content, false);
+    else if (m.role === 'assistant') appendAssistantMessageFinal(m.content);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById('chat-input');
+  const content = input.value.trim();
+  if (!content || isStreaming) return;
+  if (!wsReady) { alert('WebSocket not connected'); return; }
+
+  isStreaming = true;
+  document.getElementById('send-btn').disabled = true;
+  currentMsgBubble = null;
+
+  appendUserMessage(content);
+  input.value = '';
+  autoResize(input);
+  hideEmptyState();
+  showTypingStatus();  // ← show bar
+
+  const requestId = Date.now().toString(36);
+  ws.send(JSON.stringify({ type: 'chat', content, agentId: currentAgentId, requestId }));
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function clearChat() {
+  if (!confirm('Clear chat history?')) return;
+  if (ws && wsReady) {
+    ws.send(JSON.stringify({ type: 'clear_chat', agentId: currentAgentId }));
+  }
+}
+
+async function summarizeChat() {
+  const btn = document.querySelector('[onclick="summarizeChat()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Summarizing...'; }
+  try {
+    const r = await fetch('/api/memory/summarize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: currentAgentId }),
+    });
     const d = await r.json();
-    if (d.ok) { loadTelegram(); }
-    else alert('Lỗi: ' + d.error);
+    appendSystemMessage('📄 Summary: ' + (d.summary || '(empty)'));
+  } catch (e) {
+    appendErrorMessage('Summarize failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📄 Summarize'; }
+  }
 }
 
-async function testSendToOwner() {
-    const btn = document.getElementById('test-send-btn');
-    btn.disabled = true; btn.textContent = 'Đang gửi...';
-    try {
-        const r = await fetch('/api/telegram/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: '✅ Brain OS test message — kết nối thành công! Brain giờ có thể chủ động nhắn tin cho bạn.' }) });
-        const d = await r.json();
-        if (d.error) alert('Lỗi: ' + d.error);
-        else { btn.textContent = 'Đã gửi!'; setTimeout(() => { btn.textContent = 'Gửi tin test'; btn.disabled = false; }, 2000); return; }
-    } catch (e) { alert('Lỗi: ' + e.message); }
-    btn.textContent = 'Gửi tin test'; btn.disabled = false;
+// ── Chat message rendering ────────────────────────────────────────────────────
+
+function getBotAvatar() {
+  if (currentAgentId === 'brain') return '🧠';
+  const sel = document.getElementById('agent-selector');
+  const opt = sel?.querySelector(`option[value="${currentAgentId}"]`);
+  return opt ? opt.textContent.split(' ')[0] : '🤖';
 }
 
-async function sendManualTelegram() {
-    const msg = document.getElementById('tg-manual-msg').value.trim();
-    if (!msg) return;
-    const r = await fetch('/api/telegram/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg }) });
-    const d = await r.json();
-    if (d.error) alert('Lỗi: ' + d.error);
-    else document.getElementById('tg-manual-msg').value = '';
+// User: avatar RIGHT → DOM order [avatar][col] + row-reverse → col left, avatar right
+function appendUserMessage(content, scroll = true) {
+  hideEmptyState();
+  const div = document.createElement('div');
+  div.className = 'msg msg-user';
+  div.innerHTML = `
+    <div class="msg-row">
+      <div class="msg-avatar msg-avatar-user">👤</div>
+      <div class="msg-col">
+        <div class="msg-bubble">${escHtml(content)}</div>
+        <div class="msg-meta">${fmtTime(Date.now())}</div>
+      </div>
+    </div>`;
+  document.getElementById('messages').appendChild(div);
+  if (scroll) div.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
-async function loadTelegram() {
-    const r = await fetch('/api/telegram');
-    const s = await r.json();
-    renderTelegramStatus(s);
-    // Pre-fill token input nếu đã có token lưu
-    if (s.savedToken) {
-        document.getElementById('tg-token-input').value = s.savedToken;
+// Bot: show typing dots immediately, replace with content on first token
+function appendAssistantMessage(content, requestId) {
+  hideEmptyState();
+  const avatar = getBotAvatar();
+  const div = document.createElement('div');
+  div.className = 'msg msg-assistant';
+  div.dataset.requestId = requestId || '';
+  div.innerHTML = `
+    <div class="msg-row">
+      <div class="msg-avatar msg-avatar-bot">${avatar}</div>
+      <div class="msg-col">
+        <div class="msg-bubble msg-bubble-typing">
+          <span class="typing-dots"><span></span><span></span><span></span></span>
+        </div>
+        <div class="msg-meta" id="stats-${requestId}">typing...</div>
+      </div>
+    </div>`;
+  document.getElementById('messages').appendChild(div);
+  currentMsgBubble = div.querySelector('.msg-bubble');
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function appendAssistantMessageFinal(content) {
+  const avatar = getBotAvatar();
+  const div = document.createElement('div');
+  div.className = 'msg msg-assistant';
+  div.innerHTML = `
+    <div class="msg-row">
+      <div class="msg-avatar msg-avatar-bot">${avatar}</div>
+      <div class="msg-col">
+        <div class="msg-bubble">${renderMarkdown(content)}</div>
+        <div class="msg-meta">—</div>
+      </div>
+    </div>`;
+  document.getElementById('messages').appendChild(div);
+}
+
+function appendToken(token) {
+  if (!currentMsgBubble) return;
+  // First token: replace typing dots with actual text
+  if (currentMsgBubble.classList.contains('msg-bubble-typing')) {
+    currentMsgBubble.classList.remove('msg-bubble-typing');
+    currentMsgBubble.innerHTML = '';
+  }
+  currentMsgBubble.innerHTML =
+    currentMsgBubble.innerHTML.replace('<span class="typing-cursor">▌</span>', '') +
+    escHtml(token) +
+    '<span class="typing-cursor">▌</span>';
+  currentMsgBubble.closest('.msg')?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function finalizeMessage(stats) {
+  if (!currentMsgBubble) return;
+  const raw = currentMsgBubble.innerHTML
+    .replace('<span class="typing-cursor">▌</span>', '')
+    .replace(/<span class="typing-dots">[\s\S]*?<\/span>/, '');
+  const decoded = raw
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+  currentMsgBubble.classList.remove('msg-bubble-typing');
+  currentMsgBubble.innerHTML = renderMarkdown(decoded);
+
+  if (stats) {
+    const metaEl = currentMsgBubble.closest('.msg')?.querySelector('.msg-meta');
+    if (metaEl) {
+      const statsText = stats.estimatedTokens
+        ? `~${stats.estimatedTokens} tokens · ${stats.selectedMessages} msgs` : '';
+      metaEl.textContent = `${fmtTime(Date.now())} ${statsText}`;
+      const badge = document.getElementById('live-stats');
+      if (badge && statsText) badge.textContent = statsText;
     }
-    if (s.connected) {
-        const mr = await fetch('/api/telegram/messages');
-        const msgs = await mr.json();
-        msgs.forEach(m => appendTelegramMessage(m));
-    }
+  }
+  currentMsgBubble = null;
 }
 
-async function toggleTelegram() {
-    const r = await fetch('/api/telegram');
-    const s = await r.json();
-
-    if (s.connected) {
-        await fetch('/api/telegram/disconnect', { method: 'POST' });
-        loadTelegram();
-    } else {
-        const token = document.getElementById('tg-token-input').value.trim();
-        if (!token) return alert('Enter a bot token first');
-        const res = await fetch('/api/telegram/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
-        const d = await res.json();
-        if (d.error) alert('❌ Lỗi kết nối Telegram:\n\n' + d.error + '\n\nKiểm tra:\n• Token có đúng không?\n• Máy có kết nối internet không?');
-        else loadTelegram();
-    }
+function appendToolCallBadge(tool) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-tool';
+  div.innerHTML = `<div class="tool-badge">🔧 ${escHtml(tool)}</div>`;
+  document.getElementById('messages').appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
-function appendTelegramMessage(msg) {
-    const list = document.getElementById('tg-messages-list');
-    const empty = list.querySelector('.section-empty');
-    if (empty) empty.remove();
-
-    const div = document.createElement('div');
-    div.className = 'tg-msg ' + (msg.direction === 'in' ? 'in' : 'out');
-    const t = new Date(msg.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    div.innerHTML = `
-    <div class="tg-msg-header"><span>${msg.direction === 'in' ? '← ' + (msg.from || '?') : '→ ' + (msg.to || '?')}</span><span>${t}</span></div>
-    <div class="tg-msg-text">${escHtml(msg.text)}</div>`;
-    list.insertBefore(div, list.firstChild);
-    document.getElementById('tg-messages-section').style.display = 'block';
+function appendErrorMessage(msg) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-error';
+  div.innerHTML = `<div class="msg-bubble">⚠️ ${escHtml(msg)}</div>`;
+  document.getElementById('messages').appendChild(div);
+  currentMsgBubble = null;
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
-// ─── LOGS ─────────────────────────────────────────────────────────────────────
+function appendSystemMessage(msg) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-system';
+  div.innerHTML = `<div class="msg-bubble">${escHtml(msg)}</div>`;
+  document.getElementById('messages').appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function showEmptyState() {
+  const es = document.getElementById('empty-state');
+  if (es) es.style.display = '';
+}
+
+function hideEmptyState() {
+  const es = document.getElementById('empty-state');
+  if (es) es.style.display = 'none';
+}
+
+function showTypingStatus(text = 'Brain đang trả lời...') {
+  const bar = document.getElementById('typing-status');
+  if (!bar) return;
+  bar.classList.add('visible');
+  setTypingStatusText(text);
+}
+
+function hideTypingStatus() {
+  const bar = document.getElementById('typing-status');
+  if (bar) bar.classList.remove('visible');
+  clearToolBadge();
+}
+
+function setTypingStatusText(text) {
+  const el = document.getElementById('typing-status-text');
+  if (el) el.textContent = text;
+}
+
+function showToolBadge(toolName) {
+  const el = document.getElementById('typing-tool-badge');
+  if (!el) return;
+  el.textContent = `🔧 ${toolName}`;
+  el.style.display = '';
+}
+
+function clearToolBadge() {
+  const el = document.getElementById('typing-tool-badge');
+  if (el) el.style.display = 'none';
+}
+
+// Simple markdown renderer
+function renderMarkdown(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // code blocks
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre><code class="lang-${lang}">${code.trim()}</code></pre>`)
+    // inline code
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // headers
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    // newlines
+    .replace(/\n/g, '<br>');
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
 async function loadLogs() {
-    const r = await fetch('/api/logs?limit=200');
-    const list = await r.json();
-    const el = document.getElementById('log-list');
-    el.innerHTML = '';
-    list.forEach(appendLogEntry);
+  const r = await fetch('/api/logs?limit=200');
+  allLogs = await r.json();
+  renderLogs();
+  updateLogCount();
 }
 
 function appendLogEntry(entry) {
+  allLogs.push(entry);
+  if (allLogs.length > 500) allLogs.shift();
+  if (currentLogLevel === 'all' || entry.level === currentLogLevel) {
     const list = document.getElementById('log-list');
-    logCount++;
-    document.getElementById('log-count').textContent = logCount > 99 ? '99+' : logCount;
-    document.getElementById('log-total-count').textContent = logCount + ' entries';
+    list.appendChild(buildLogEl(entry));
+    if (autoScrollEnabled) list.scrollTop = list.scrollHeight;
+  }
+  updateLogCount();
+}
 
-    const div = document.createElement('div');
-    div.className = `log-entry ${entry.level !== logFilter && logFilter !== 'all' ? 'hide' : ''}`;
-    div.dataset.level = entry.level;
-    const t = new Date(entry.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    div.innerHTML = `
-    <span class="log-time">${t}</span>
-    <span class="log-level ${entry.level}">${entry.level.toUpperCase()}</span>
-    <span class="log-source">${escHtml(entry.source)}</span>
-    <span class="log-msg">${escHtml(entry.message)}</span>`;
-    list.appendChild(div);
+function renderLogs() {
+  const list = document.getElementById('log-list');
+  const filtered = currentLogLevel === 'all' ? allLogs : allLogs.filter(l => l.level === currentLogLevel);
+  list.innerHTML = filtered.map(l => buildLogEl(l).outerHTML).join('');
+  if (autoScrollEnabled) list.scrollTop = list.scrollHeight;
+}
 
-    if (autoscroll) list.scrollTop = list.scrollHeight;
+function buildLogEl(entry) {
+  const div = document.createElement('div');
+  div.className = `log-entry log-${entry.level}`;
+  const t = fmtTime(new Date(entry.timestamp).getTime());
+  div.innerHTML = `<span class="log-time">${t}</span><span class="log-level">${entry.level.toUpperCase()}</span><span class="log-source">[${escHtml(entry.source)}]</span><span class="log-msg">${escHtml(entry.message)}</span>`;
+  return div;
 }
 
 function filterLogs(level) {
-    logFilter = level;
-    document.querySelectorAll('.filter-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.level === level));
-    document.querySelectorAll('.log-entry').forEach(e =>
-        e.classList.toggle('hide', level !== 'all' && e.dataset.level !== level));
-}
-
-async function clearLogs() {
-    if (!confirm('Clear all logs?')) return;
-    await fetch('/api/logs', { method: 'DELETE' });
-    document.getElementById('log-list').innerHTML = '';
-    logCount = 0;
-    document.getElementById('log-count').textContent = '0';
-    document.getElementById('log-total-count').textContent = '0 entries';
+  currentLogLevel = level;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.level === level));
+  renderLogs();
 }
 
 function toggleAutoscroll() {
-    autoscroll = !autoscroll;
-    document.getElementById('autoscroll-toggle').classList.toggle('on', autoscroll);
+  autoScrollEnabled = !autoScrollEnabled;
+  const tog = document.getElementById('autoscroll-toggle');
+  if (tog) tog.className = `toggle ${autoScrollEnabled ? 'on' : ''}`;
 }
 
-// ─── Utils ────────────────────────────────────────────────────────────────────
-function escHtml(s) {
-    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function clearLogs() {
+  if (!confirm('Clear all logs?')) return;
+  await fetch('/api/logs', { method: 'DELETE' });
+  allLogs = [];
+  document.getElementById('log-list').innerHTML = '';
+  updateLogCount();
 }
 
-// Close modal on backdrop click
-document.getElementById('agent-modal').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeAgentModal();
-});
+function updateLogCount() {
+  const n = allLogs.length;
+  const el1 = document.getElementById('log-count');
+  const el2 = document.getElementById('log-total-count');
+  if (el1) el1.textContent = n;
+  if (el2) el2.textContent = `${n} entries`;
+}
 
-connect();
+// ── Telegram ──────────────────────────────────────────────────────────────────
+async function loadTelegram() {
+  const r = await fetch('/api/telegram');
+  const s = await r.json();
+  renderTelegramStatus(s);
+
+  const msgs = await fetch('/api/telegram/messages').then(r => r.json());
+  if (msgs && msgs.length) renderTelegramMessages(msgs);
+}
+
+function renderTelegramStatus(s) {
+  const dot = document.getElementById('tg-dot');
+  const txt = document.getElementById('tg-status-text');
+  const title = document.getElementById('tg-card-title');
+  const sub = document.getElementById('tg-card-sub');
+  const btn = document.getElementById('tg-connect-btn');
+  const sendCard = document.getElementById('tg-send-card');
+  const ownerDot = document.getElementById('owner-dot');
+  const ownerTxt = document.getElementById('owner-status-text');
+
+  if (!s) return;
+
+  if (s.connected) {
+    if (dot) dot.className = 'dot green';
+    if (txt) txt.textContent = `Telegram: @${s.username || 'connected'}`;
+    if (title) title.textContent = `@${s.username || 'Bot'} connected`;
+    if (sub) sub.textContent = 'Telegram bot is active and ready';
+    if (btn) btn.textContent = 'Disconnect';
+    if (sendCard) sendCard.style.display = '';
+    const tokenInput = document.getElementById('tg-token-input');
+    if (tokenInput && s.token) tokenInput.value = s.token;
+  } else {
+    if (dot) dot.className = 'dot red';
+    if (txt) txt.textContent = 'Telegram: —';
+    if (title) title.textContent = 'Not connected';
+    if (sub) sub.textContent = 'Connect your Telegram bot to control Brain OS remotely';
+    if (btn) btn.textContent = 'Connect';
+    if (sendCard) sendCard.style.display = 'none';
+  }
+
+  if (s.ownerChatId) {
+    if (ownerDot) ownerDot.className = 'dot green';
+    if (ownerTxt) ownerTxt.textContent = `ID: ${s.ownerChatId}`;
+    const ownerInput = document.getElementById('tg-owner-input');
+    if (ownerInput) ownerInput.value = s.ownerChatId;
+  } else {
+    if (ownerDot) ownerDot.className = 'dot';
+    if (ownerTxt) ownerTxt.textContent = 'Chưa thiết lập';
+  }
+}
+
+function renderTelegramMessages(msgs) {
+  const section = document.getElementById('tg-messages-section');
+  const list = document.getElementById('tg-messages-list');
+  const count = document.getElementById('tg-msg-count');
+  if (!section || !list) return;
+  section.style.display = '';
+  count.textContent = msgs.length;
+  list.innerHTML = msgs.slice(-20).reverse().map(m => `
+    <div class="tg-msg-item">
+      <span class="tg-msg-from">${escHtml(m.from || 'unknown')}</span>
+      <span class="tg-msg-text">${escHtml(m.text || '')}</span>
+      <span class="tg-msg-time">${fmtTime(m.timestamp || Date.now())}</span>
+    </div>`).join('');
+}
+
+function appendTelegramMessage(msg) {
+  const section = document.getElementById('tg-messages-section');
+  if (section) section.style.display = '';
+  const list = document.getElementById('tg-messages-list');
+  const empty = list?.querySelector('.section-empty');
+  if (empty) empty.remove();
+  if (!list) return;
+
+  const isOut = msg.direction === 'out';
+  const label = isOut
+    ? `🧠 Brain → ${escHtml(msg.to || 'user')}`
+    : `👤 ${escHtml(msg.from || msg.chatId || '?')}`;
+  const ts = fmtTime(msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now());
+
+  const div = document.createElement('div');
+  div.className = `tg-msg-item ${isOut ? 'tg-msg-out' : 'tg-msg-in'}`;
+  div.innerHTML = `
+    <span class="tg-msg-from">${label}</span>
+    <span class="tg-msg-text">${escHtml(msg.text || '')}</span>
+    <span class="tg-msg-time">${ts}</span>`;
+  list.prepend(div);
+
+  const count = document.getElementById('tg-msg-count');
+  if (count) count.textContent = parseInt(count.textContent || '0') + 1;
+}
+
+async function toggleTelegram() {
+  const r = await fetch('/api/telegram');
+  const s = await r.json();
+
+  if (s.connected) {
+    if (!confirm('Disconnect Telegram?')) return;
+    await fetch('/api/telegram/disconnect', { method: 'POST' });
+  } else {
+    const token = document.getElementById('tg-token-input').value.trim();
+    if (!token) return alert('Enter bot token first');
+    const btn = document.getElementById('tg-connect-btn');
+    btn.disabled = true;
+    btn.textContent = 'Connecting...';
+    try {
+      const res = await fetch('/api/telegram/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed');
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  loadTelegram();
+}
+
+async function saveOwnerChatId() {
+  const chatId = document.getElementById('tg-owner-input').value.trim();
+  if (!chatId) return alert('Enter Chat ID first');
+  await fetch('/api/telegram/owner', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chatId }),
+  });
+  loadTelegram();
+}
+
+async function testSendToOwner() {
+  const btn = document.getElementById('test-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    const r = await fetch('/api/telegram/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: '👋 Brain OS test message — connection OK!' }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed');
+    alert('Sent! Check Telegram.');
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Gửi tin test';
+  }
+}
+
+async function sendManualTelegram() {
+  const msg = document.getElementById('tg-manual-msg').value.trim();
+  if (!msg) return;
+  await fetch('/api/telegram/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg }),
+  });
+  document.getElementById('tg-manual-msg').value = '';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(function init() {
+  // Apply saved theme
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+  applyTheme(savedTheme === 'dark');
+
+  // Start WebSocket
+  connect();
+
+  // Set initial tab btn styles
+  switchModalTab('general');
+})();

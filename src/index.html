@@ -1,236 +1,445 @@
 <!DOCTYPE html>
 <html lang="vi">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Brain OS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link
-    href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="app.css">
+  <style>
+    /* ── Chat message layout ───────────────────────────────── */
+    #messages {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 16px 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .msg { display: flex; flex-direction: column; max-width: 100%; }
+
+    /* Row = avatar + bubble side by side */
+    .msg-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      max-width: 78%;
+    }
+
+    /* Avatar circle */
+    .msg-avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .msg-avatar-bot  { background: var(--card, #1e2030); border: 1px solid var(--border, #2e3148); }
+    .msg-avatar-user { background: var(--accent, #7c6af7); }
+
+    /* Bubble column */
+    .msg-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+
+    /* Bubble base */
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.6;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .msg-bubble code { font-family: var(--mono, monospace); font-size: 12px; }
+    .msg-bubble pre  { overflow-x: auto; margin: 6px 0; border-radius: 8px; padding: 10px; background: rgba(0,0,0,.25); }
+
+    /* Meta */
+    .msg-meta { font-size: 10px; color: var(--muted, #666); padding: 0 4px; }
+
+    /* ── User: right side ── */
+    .msg-user .msg-row {
+      align-self: flex-end;
+      flex-direction: row-reverse; /* avatar(DOM-first) → shows on RIGHT */
+    }
+    .msg-user .msg-col  { align-items: flex-end; }
+    .msg-user .msg-bubble {
+      background: var(--accent, #7c6af7);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-user .msg-meta { text-align: right; }
+
+    /* ── Bot: left side ── */
+    .msg-assistant .msg-row { align-self: flex-start; }
+    .msg-assistant .msg-col { align-items: flex-start; }
+    .msg-assistant .msg-bubble {
+      background: var(--card, #1e2030);
+      color: var(--text, #e2e8f0);
+      border: 1px solid var(--border, #2e3148);
+      border-bottom-left-radius: 4px;
+    }
+
+    /* Tool badge */
+    .msg-tool { align-self: center; }
+    .tool-badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--card2, #262840);
+      color: var(--muted, #888);
+      border: 1px solid var(--border, #2e3148);
+      font-family: var(--mono, monospace);
+    }
+
+    /* Error / system */
+    .msg-error .msg-bubble  { background: #3d1515; color: #ff8080; border: 1px solid #5c2020; }
+    .msg-system .msg-bubble { background: var(--card2, #262840); color: var(--muted, #888); font-style: italic; font-size: 12px; }
+    .msg-error  { align-self: flex-start; }
+    .msg-system { align-self: center; }
+
+    /* Typing cursor */
+    .typing-cursor { animation: blink .8s step-end infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* Typing dots (3 dots bounce) */
+    .msg-bubble-typing { padding: 12px 16px !important; }
+    .typing-dots { display: inline-flex; gap: 5px; align-items: center; height: 16px; }
+
+    /* ── Typing status bar (fixed above input) ── */
+    #typing-status {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 20px;
+      background: 'transparent';
+      border-top: 1px solid var(--border, #2e3148);
+      font-size: 12px;
+      color: var(--muted, #888);
+      flex-shrink: 0;
+    }
+    #typing-status.visible { display: flex; }
+    #typing-status .ts-dots { display: inline-flex; gap: 4px; }
+    #typing-status .ts-dots span {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--accent, #7c6af7);
+      animation: dotBounce 1.2s infinite ease-in-out;
+    }
+    #typing-status .ts-dots span:nth-child(2) { animation-delay: .2s; }
+    #typing-status .ts-dots span:nth-child(3) { animation-delay: .4s; }
+    #typing-status .ts-tool {
+      font-family: var(--mono, monospace);
+      font-size: 11px;
+      color: var(--accent, #7c6af7);
+      background: rgba(124,106,247,.12);
+      padding: 1px 8px;
+      border-radius: 10px;
+    }
+    .typing-dots span {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted, #888);
+      animation: dotBounce 1.2s infinite ease-in-out;
+    }
+    .typing-dots span:nth-child(1) { animation-delay: 0s; }
+    .typing-dots span:nth-child(2) { animation-delay: .2s; }
+    .typing-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes dotBounce {
+      0%,60%,100% { transform: translateY(0); opacity: .4; }
+      30%          { transform: translateY(-6px); opacity: 1; }
+    }
+  </style>
 </head>
-
 <body>
-  <div id="app">
-    <aside id="sidebar">
-      <div class="logo">
-        <div class="logo-icon">🧠</div>
-        <div>
-          <div class="logo-text">Brain OS</div>
-          <div class="logo-sub">v1.0.0</div>
-        </div>
+<div id="app">
+  <aside id="sidebar">
+    <div class="logo">
+      <div class="logo-icon">🧠</div>
+      <div>
+        <div class="logo-text">Brain OS</div>
+        <div class="logo-sub">v2.0.0</div>
       </div>
-      <nav>
-        <div class="nav-item active" data-tab="chat" onclick="switchTab('chat')"><span class="nav-icon">💬</span>Chat
-        </div>
-        <div class="nav-item" data-tab="agents" onclick="switchTab('agents')"><span class="nav-icon">🤖</span>Agents
-          <span class="nav-badge" id="agent-count">0</span>
-        </div>
-        <div class="nav-item" data-tab="telegram" onclick="switchTab('telegram')"><span
-            class="nav-icon">✈️</span>Telegram </div>
-        <div class="nav-item" data-tab="logs" onclick="switchTab('logs')"><span class="nav-icon">📋</span>Logs <span
-            class="nav-badge" id="log-count">0</span></div>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="status-row">
-          <div class="dot" id="brain-dot"></div><span id="brain-status-text">Brain: checking...</span>
-        </div>
-        <div class="status-row">
-          <div class="dot" id="tg-dot"></div><span id="tg-status-text">Telegram: —</span>
-        </div>
-        <div class="status-row" style="margin-top:6px;color:var(--muted);font-size:10px"><span id="memory-info">Memory:
-            0 msgs</span></div>
-        <div class="theme-toggle" onclick="toggleTheme()" id="theme-btn"><span id="theme-icon">☀️</span><span
-            id="theme-label">Light mode</span></div>
+    </div>
+    <nav>
+      <div class="nav-item active" data-tab="chat" onclick="switchTab('chat')"><span class="nav-icon">💬</span>Chat</div>
+      <div class="nav-item" data-tab="agents" onclick="switchTab('agents')"><span class="nav-icon">🤖</span>Agents <span class="nav-badge" id="agent-count">0</span></div>
+      <div class="nav-item" data-tab="telegram" onclick="switchTab('telegram')"><span class="nav-icon">✈️</span>Telegram</div>
+      <div class="nav-item" data-tab="logs" onclick="switchTab('logs')"><span class="nav-icon">📋</span>Logs <span class="nav-badge" id="log-count">0</span></div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="status-row">
+        <div class="dot" id="brain-dot"></div>
+        <span id="brain-status-text">Brain: checking...</span>
       </div>
-    </aside>
-    <main id="main">
-      <div id="tab-chat" class="tab-content active">
-        <div class="topbar"><span class="topbar-title">Chat</span><span class="topbar-meta"
-            id="chat-context-info">—</span>
-          <div class="topbar-actions"><button class="btn btn-ghost btn-sm" onclick="clearChat()">🗑
-              Clear</button><button class="btn btn-ghost btn-sm" onclick="summarizeChat()">📄 Summarize</button>
-          </div>
-        </div>
-        <div class="chat-header"><span style="font-size:12px;color:var(--muted)">Agent:</span><select
-            id="agent-selector" class="agent-select" onchange="onAgentChange()">
-            <option value="brain">🧠 Brain (Local)</option>
-          </select><span class="context-badge" id="live-stats">—</span></div>
-        <div id="messages">
-          <div class="empty-state" id="empty-state">
-            <div class="big-icon">🧠</div>
-            <p>Brain OS is ready. Start chatting.</p>
-            <p style="font-size:11px;color:var(--muted);font-family:var(--mono)">Select an agent or use Brain
-              directly </p>
-          </div>
-        </div>
-        <div class="chat-input-area"><textarea id="chat-input"
-            placeholder="Type a message... (Enter to send, Shift+Enter for newline)" rows="1" oninput="autoResize(this)"
-            onkeydown="handleKey(event)"></textarea>
-          <div class="chat-actions"><button class="btn btn-primary" onclick="sendChat()" id="send-btn">Send</button>
-          </div>
-        </div>
+      <div class="status-row">
+        <div class="dot" id="tg-dot"></div>
+        <span id="tg-status-text">Telegram: —</span>
       </div>
-      <div id="tab-agents" class="tab-content">
-        <div class="topbar"><span class="topbar-title">Agents</span><span class="topbar-meta" id="agents-count-meta">0
-            agents</span>
-          <div class="topbar-actions"><button class="btn btn-ghost btn-sm" id="view-toggle"
-              onclick="toggleAgentView()">⊞ Grid</button><button class="btn btn-primary btn-sm"
-              onclick="openAgentModal()">+New Agent</button></div>
-        </div>
-        <div id="agents-canvas" style="flex:1;overflow:hidden;position:relative;background:var(--bg)">
-          <div id="canvas-inner" style="position:absolute;inset:0;overflow:auto;padding:32px">
-            <div class="canvas-section-label" style="margin-bottom:16px">ORCHESTRATOR</div>
-            <div style="display:flex;align-items:flex-start;gap:0">
-              <div class="node-card node-brain" id="node-brain">
-                <div class="node-icon">🧠</div>
-                <div class="node-body">
-                  <div class="node-title">Brain</div>
-                  <div class="node-sub">Local · Ollama</div>
-                </div>
-                <div class="node-status-dot green"></div>
-              </div>
-              <div id="connector-area"
-                style="display:flex;flex-direction:column;justify-content:center;min-width:80px;padding-top:28px">
-                <div class="connector-line" id="connector-main"></div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:12px" id="agent-nodes-col">
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="status-row" style="margin-top:6px;color:var(--muted);font-size:10px">
+        <span id="memory-info">Memory: 0 msgs</span>
+      </div>
+      <div class="theme-toggle" onclick="toggleTheme()" id="theme-btn">
+        <span id="theme-icon">☀️</span><span id="theme-label">Light mode</span>
+      </div>
+    </div>
+  </aside>
 
-        <div id="agents-grid-view" style="flex:1;overflow-y:auto;padding:20px;display:none">
-          <div class="agents-grid" id="agents-grid"></div>
+  <main id="main">
+    <!-- ── Chat ── -->
+    <div id="tab-chat" class="tab-content active">
+      <div class="topbar">
+        <span class="topbar-title">Chat</span>
+        <span class="topbar-meta" id="chat-context-info">—</span>
+        <div class="topbar-actions">
+          <button class="btn btn-ghost btn-sm" onclick="clearChat()">🗑 Clear</button>
+          <button class="btn btn-ghost btn-sm" onclick="summarizeChat()">📄 Summarize</button>
         </div>
       </div>
-      <div id="tab-telegram" class="tab-content">
-        <div class="topbar"><span class="topbar-title">Telegram</span></div>
-        <div style="padding:20px;overflow-y:auto;flex:1">
-          <div class="tg-status-card">
-            <div class="tg-status-header">
-              <div class="tg-status-icon">✈️</div>
-              <div class="tg-status-info">
-                <h3 id="tg-card-title">Not connected</h3>
-                <p id="tg-card-sub">Connect your Telegram bot to control Brain OS remotely</p>
+      <div class="chat-header">
+        <span style="font-size:12px;color:var(--muted)">Agent:</span>
+        <select id="agent-selector" class="agent-select" onchange="onAgentChange()">
+          <option value="brain">🧠 Brain (Copilot)</option>
+        </select>
+        <span class="context-badge" id="live-stats">—</span>
+      </div>
+      <div id="messages">
+        <div class="empty-state" id="empty-state">
+          <div class="big-icon">🧠</div>
+          <p>Brain OS is ready. Start chatting.</p>
+          <p style="font-size:11px;color:var(--muted);font-family:var(--mono)">Orchestrator: GitHub Copilot via copilot-api</p>
+        </div>
+      </div>
+      <div id="typing-status">
+        <div class="ts-dots"><span></span><span></span><span></span></div>
+        <span id="typing-status-text">Brain đang trả lời...</span>
+        <span id="typing-tool-badge" class="ts-tool" style="display:none"></span>
+      </div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+          rows="1" oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
+        <div class="chat-actions">
+          <button class="btn btn-primary" onclick="sendChat()" id="send-btn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Agents ── -->
+    <div id="tab-agents" class="tab-content">
+      <div class="topbar">
+        <span class="topbar-title">Agents</span>
+        <span class="topbar-meta" id="agents-count-meta">0 agents</span>
+        <div class="topbar-actions">
+          <button class="btn btn-ghost btn-sm" id="view-toggle" onclick="toggleAgentView()">⊞ Grid</button>
+          <button class="btn btn-primary btn-sm" onclick="openAgentModal()">+ New Agent</button>
+        </div>
+      </div>
+      <div id="agents-canvas" style="flex:1;overflow:hidden;position:relative;background:var(--bg)">
+        <div id="canvas-inner" style="position:absolute;inset:0;overflow:auto;padding:32px">
+          <div class="canvas-section-label" style="margin-bottom:16px">ORCHESTRATOR</div>
+          <div style="display:flex;align-items:flex-start;gap:0">
+            <div class="node-card node-brain" id="node-brain">
+              <div class="node-icon">🧠</div>
+              <div class="node-body">
+                <div class="node-title">Brain</div>
+                <div class="node-sub" id="brain-node-sub">Copilot · gpt-5-mini</div>
               </div>
+              <div class="node-status-dot green"></div>
             </div>
-            <div class="tg-connect-form"><input type="password" class="form-input" id="tg-token-input"
-                placeholder="Bot token from @BotFather"><button class="btn btn-primary" id="tg-connect-btn"
-                onclick="toggleTelegram()">Connect</button></div>
-            <p style="font-size:11px;color:var(--muted)">Token lưu vĩnh viễn,
-              tự reconnect khi khởi động lại.</p>
-          </div>
-          <div class="tg-status-card" style="margin-top:12px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><span
-                style="font-size:20px">👤</span>
-              <div>
-                <div style="font-size:14px;font-weight:600;color:var(--text)">Owner Chat ID</div>
-                <div style="font-size:12px;color:var(--muted2);margin-top:2px">Để Brain/agents chủ động
-                  nhắn tin cho bạn </div>
-              </div>
-              <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
-                <div class="dot" id="owner-dot" style="width:8px;height:8px"></div><span
-                  style="font-size:11px;font-family:var(--mono);color:var(--muted)" id="owner-status-text">Chưa thiết
-                  lập</span>
-              </div>
+            <div id="connector-area" style="display:flex;flex-direction:column;justify-content:center;min-width:80px;padding-top:28px">
+              <div class="connector-line" id="connector-main"></div>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:10px"><input type="text" class="form-input"
-                id="tg-owner-input" placeholder="Nhập Telegram User ID của bạn (VD: 123456789)"
-                style="font-family:var(--mono)"><button class="btn btn-primary" onclick="saveOwnerChatId()">Lưu</button>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost btn-sm"
-                onclick="testSendToOwner()" id="test-send-btn">Gửi tin test</button><span
-                style="font-size:11px;color:var(--muted)">Hoặc nhắn bất kỳ tin nào cho bot → Chat ID tự
-                detect</span></div>
-            <div
-              style="margin-top:10px;padding:10px;background:var(--card2);border-radius:var(--radius-sm);border:1px solid var(--border)">
-              <div style="font-size:11px;color:var(--muted2);font-family:var(--mono);margin-bottom:4px">
-                Cách lấy User ID:</div>
-              <div style="font-size:11px;color:var(--muted2)">1. Mở Telegram → nhắn tin cho <span
-                  class="code-inline">@userinfobot</span></div>
-              <div style="font-size:11px;color:var(--muted2)">2. Bot sẽ trả về ID của bạn</div>
-              <div style="font-size:11px;color:var(--muted2)">3. Hoặc nhắn 1 tin cho bot này → ID tự lưu
-              </div>
-            </div>
-          </div>
-          <div class="tg-status-card" id="tg-send-card" style="margin-top:12px;display:none">
-            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Gửi tin
-              thủ công</div>
-            <div style="display:flex;gap:8px"><textarea class="form-input" id="tg-manual-msg" rows="2"
-                placeholder="Nhập tin nhắn..." style="flex:1;resize:none;font-size:13px"></textarea><button
-                class="btn btn-primary" onclick="sendManualTelegram()" style="align-self:flex-end">Gửi</button></div>
-          </div>
-          <div class="tg-messages" id="tg-messages-section" style="display:none;margin-top:12px">
-            <div class="tg-messages-header" style="display:flex;align-items:center;justify-content:space-between">
-              <span>Tin nhắn
-                gần đây</span><span style="font-size:11px;font-family:var(--mono);color:var(--muted)"
-                id="tg-msg-count">0</span></div>
-            <div class="tg-messages-list" id="tg-messages-list">
-              <div class="section-empty">Chưa có tin nhắn</div>
-            </div>
-          </div>
-          <div class="tg-instructions" style="margin-top:12px">
-            <h4>Các lệnh Brain có thể dùng</h4>
-            <ol>
-              <li>Gọi tool <span class="code-inline">send_telegram</span>để chủ động nhắn tin</li>
-              <li>Ví dụ: <span class="code-inline">"Sau khi xong task, báo cho tôi qua
-                  Telegram"</span></li>
-              <li>Agents cũng có thể được chain để gửi kết quả qua Telegram</li>
-              <li>Hỗ trợ tin dài — tự động chia nhỏ nếu quá 4000 ký tự</li>
-            </ol>
+            <div style="display:flex;flex-direction:column;gap:12px" id="agent-nodes-col"></div>
           </div>
         </div>
       </div>
-      <div id="tab-logs" class="tab-content">
-        <div class="topbar"><span class="topbar-title">Logs</span><span class="log-count" id="log-total-count">0
-            entries</span>
-          <div class="topbar-actions"><button class="btn btn-danger btn-sm" onclick="clearLogs()">Clear</button></div>
-        </div>
-        <div class="log-toolbar"><button class="filter-btn active" data-level="all"
-            onclick="filterLogs('all')">All</button><button class="filter-btn" data-level="info"
-            onclick="filterLogs('info')">INFO</button><button class="filter-btn f-warn" data-level="warn"
-            onclick="filterLogs('warn')">WARN</button><button class="filter-btn f-error" data-level="error"
-            onclick="filterLogs('error')">ERROR</button><button class="filter-btn" data-level="debug"
-            onclick="filterLogs('debug')">DEBUG</button><label class="autoscroll-toggle"><input type="checkbox"
-              id="autoscroll" checked style="display:none"><span class="toggle on" id="autoscroll-toggle"
-              onclick="toggleAutoscroll()"></span>Auto-scroll </label></div>
-        <div id="log-list"></div>
+      <div id="agents-grid-view" style="flex:1;overflow-y:auto;padding:20px;display:none">
+        <div class="agents-grid" id="agents-grid"></div>
       </div>
-    </main>
-  </div>
-  <div class="modal-overlay" id="agent-modal">
-    <div class="modal">
-      <h3 id="modal-title">New Agent</h3><input type="hidden" id="agent-edit-id">
-      <div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input"
-          id="agent-name" placeholder="e.g. Dev Agent"></div>
-      <div class="form-group"><label class="form-label">Description</label><input type="text" class="form-input"
-          id="agent-desc-input" placeholder="What this agent specializes in"></div>
-      <div class="form-group"><label class="form-label">Provider</label><select class="form-select" id="agent-provider"
-          onchange="onProviderChange()">
+    </div>
+
+    <!-- ── Telegram ── -->
+    <div id="tab-telegram" class="tab-content">
+      <div class="topbar"><span class="topbar-title">Telegram</span></div>
+      <div style="padding:20px;overflow-y:auto;flex:1">
+        <div class="tg-status-card">
+          <div class="tg-status-header">
+            <div class="tg-status-icon">✈️</div>
+            <div class="tg-status-info">
+              <h3 id="tg-card-title">Not connected</h3>
+              <p id="tg-card-sub">Connect your Telegram bot to control Brain OS remotely</p>
+            </div>
+          </div>
+          <div class="tg-connect-form">
+            <input type="password" class="form-input" id="tg-token-input" placeholder="Bot token from @BotFather">
+            <button class="btn btn-primary" id="tg-connect-btn" onclick="toggleTelegram()">Connect</button>
+          </div>
+          <p style="font-size:11px;color:var(--muted)">Token lưu vĩnh viễn, tự reconnect khi khởi động lại.</p>
+        </div>
+        <div class="tg-status-card" style="margin-top:12px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <span style="font-size:20px">👤</span>
+            <div>
+              <div style="font-size:14px;font-weight:600;color:var(--text)">Owner Chat ID</div>
+              <div style="font-size:12px;color:var(--muted2);margin-top:2px">Để Brain/agents chủ động nhắn tin cho bạn</div>
+            </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+              <div class="dot" id="owner-dot" style="width:8px;height:8px"></div>
+              <span style="font-size:11px;font-family:var(--mono);color:var(--muted)" id="owner-status-text">Chưa thiết lập</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input type="text" class="form-input" id="tg-owner-input" placeholder="Nhập Telegram User ID (VD: 123456789)" style="font-family:var(--mono)">
+            <button class="btn btn-primary" onclick="saveOwnerChatId()">Lưu</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="testSendToOwner()" id="test-send-btn">Gửi tin test</button>
+            <span style="font-size:11px;color:var(--muted)">Hoặc nhắn bất kỳ tin nào cho bot → Chat ID tự detect</span>
+          </div>
+        </div>
+        <div class="tg-status-card" id="tg-send-card" style="margin-top:12px;display:none">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Gửi tin thủ công</div>
+          <div style="display:flex;gap:8px">
+            <textarea class="form-input" id="tg-manual-msg" rows="2" placeholder="Nhập tin nhắn..." style="flex:1;resize:none;font-size:13px"></textarea>
+            <button class="btn btn-primary" onclick="sendManualTelegram()" style="align-self:flex-end">Gửi</button>
+          </div>
+        </div>
+        <div class="tg-messages" id="tg-messages-section" style="display:none;margin-top:12px">
+          <div class="tg-messages-header" style="display:flex;align-items:center;justify-content:space-between">
+            <span>Tin nhắn gần đây</span>
+            <span style="font-size:11px;font-family:var(--mono);color:var(--muted)" id="tg-msg-count">0</span>
+          </div>
+          <div class="tg-messages-list" id="tg-messages-list">
+            <div class="section-empty">Chưa có tin nhắn</div>
+          </div>
+        </div>
+        <div class="tg-instructions" style="margin-top:12px">
+          <h4>Các lệnh Brain có thể dùng</h4>
+          <ol>
+            <li>Gọi tool <span class="code-inline">send_telegram</span> để chủ động nhắn tin</li>
+            <li>Ví dụ: <span class="code-inline">"Sau khi xong task, báo cho tôi qua Telegram"</span></li>
+            <li>Agents cũng có thể được chain để gửi kết quả qua Telegram</li>
+            <li>Hỗ trợ tin dài — tự động chia nhỏ nếu quá 4000 ký tự</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Logs ── -->
+    <div id="tab-logs" class="tab-content">
+      <div class="topbar">
+        <span class="topbar-title">Logs</span>
+        <span class="log-count" id="log-total-count">0 entries</span>
+        <div class="topbar-actions">
+          <button class="btn btn-danger btn-sm" onclick="clearLogs()">Clear</button>
+        </div>
+      </div>
+      <div class="log-toolbar">
+        <button class="filter-btn active" data-level="all" onclick="filterLogs('all')">All</button>
+        <button class="filter-btn" data-level="info" onclick="filterLogs('info')">INFO</button>
+        <button class="filter-btn f-warn" data-level="warn" onclick="filterLogs('warn')">WARN</button>
+        <button class="filter-btn f-error" data-level="error" onclick="filterLogs('error')">ERROR</button>
+        <button class="filter-btn" data-level="debug" onclick="filterLogs('debug')">DEBUG</button>
+        <label class="autoscroll-toggle">
+          <input type="checkbox" id="autoscroll" checked style="display:none">
+          <span class="toggle on" id="autoscroll-toggle" onclick="toggleAutoscroll()"></span>Auto-scroll
+        </label>
+      </div>
+      <div id="log-list"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ── Agent Modal ── -->
+<div class="modal-overlay" id="agent-modal">
+  <div class="modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
+    <h3 id="modal-title">New Agent</h3>
+    <input type="hidden" id="agent-edit-id">
+
+    <!-- Tab nav -->
+    <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)">
+      <button class="modal-tab-btn active" data-tab="general" onclick="switchModalTab('general')" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)">General</button>
+      <button class="modal-tab-btn" data-tab="skills" onclick="switchModalTab('skills')" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)">Skills</button>
+      <button class="modal-tab-btn" data-tab="context" onclick="switchModalTab('context')" style="padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)">Context</button>
+    </div>
+
+    <!-- General -->
+    <div class="modal-tab-panel" data-tab="general">
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" class="form-input" id="agent-name" placeholder="e.g. Dev Agent">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input type="text" class="form-input" id="agent-desc-input" placeholder="What this agent specializes in">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Provider</label>
+        <select class="form-select" id="agent-provider" onchange="onProviderChange()">
+          <option value="copilot">GitHub Copilot (recommended)</option>
           <option value="claude">Claude (Anthropic)</option>
           <option value="gemini">Gemini (Google)</option>
           <option value="openrouter">OpenRouter</option>
           <option value="openai">OpenAI</option>
           <option value="ollama">Ollama (Local)</option>
-        </select></div>
-      <div class="form-group"><label class="form-label">Model <span id="model-hint"
-            style="color:var(--muted)"></span></label>
-        <div id="agent-model-wrap"><input type="text" class="form-input" id="agent-model"
-            placeholder="e.g. claude-opus-4-5"></div>
+        </select>
       </div>
-      <div class="form-group"><label class="form-label">API Key <span style="color:var(--muted)">(direct key, or
-            leave empty to use env var)</span></label><input type="password" class="form-input" id="agent-apikey"
-          placeholder="sk-or-v1-... hoặc để trống nếu dùng env var"></div>
-      <div class="form-group"><label class="form-label">System Prompt</label><textarea class="form-textarea"
-          id="agent-prompt" rows="4" placeholder="You are a helpful assistant..."></textarea></div>
-      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeAgentModal()">Cancel</button><button
-          class="btn btn-primary" onclick="saveAgent()">Save</button></div>
+      <div class="form-group">
+        <label class="form-label">Model <span id="model-hint" style="color:var(--muted);font-weight:400"></span></label>
+        <div id="agent-model-wrap">
+          <input type="text" class="form-input" id="agent-model" placeholder="e.g. gpt-5-mini">
+        </div>
+      </div>
+      <div class="form-group" id="agent-apikey-row">
+        <label class="form-label">API Key <span style="color:var(--muted);font-weight:400">(direct key, or leave empty to use env var)</span></label>
+        <input type="password" class="form-input" id="agent-apikey" placeholder="sk-... hoặc để trống nếu dùng env var">
+      </div>
+      <div class="form-group">
+        <label class="form-label">System Prompt</label>
+        <textarea class="form-textarea" id="agent-prompt" rows="5" placeholder="You are a helpful assistant..."></textarea>
+      </div>
+    </div>
+
+    <!-- Skills -->
+    <div class="modal-tab-panel" data-tab="skills" style="display:none">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        Skills là các instructions bổ sung cho agent. Mỗi skill một dòng.<br>
+        Chúng được append vào system prompt dưới dạng numbered list.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Skills (one per line)</label>
+        <textarea class="form-textarea" id="agent-skills" rows="10"
+          placeholder="Luôn cung cấp code examples đầy đủ&#10;Giải thích ngắn gọn trước khi code&#10;Ưu tiên Node.js/JavaScript"></textarea>
+      </div>
+    </div>
+
+    <!-- Context -->
+    <div class="modal-tab-panel" data-tab="context" style="display:none">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+        Context Notes là ghi chú tích lũy về user preferences và patterns.<br>
+        Tự động cập nhật sau mỗi reply nếu bật Auto Update.
+      </p>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <input type="checkbox" id="agent-auto-update">
+        <label for="agent-auto-update" style="margin:0;font-size:13px;cursor:pointer">Auto Update Context (tự học sau mỗi reply)</label>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Context Notes</label>
+        <textarea class="form-textarea" id="agent-context-notes" rows="10"
+          placeholder="Notes về user preferences, patterns đã học...&#10;[timestamp] Q: ... → A: ..."></textarea>
+      </div>
+      <button onclick="clearAgentContext()" class="btn btn-ghost btn-sm" style="margin-top:4px">🗑 Clear Context Notes</button>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeAgentModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAgent()">Save</button>
     </div>
   </div>
-  <script src="app.js"></script>
-</body>
+</div>
 
+<script src="app.js"></script>
+</body>
 </html>

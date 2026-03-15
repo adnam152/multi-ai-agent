@@ -1,0 +1,1474 @@
+[
+  {
+    "id": "1773567380516xohi",
+    "timestamp": "2026-03-15T09:36:20.516Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ bạn có thể tự tạo agent theo yêu cầu của tôi không?",
+    "data": null
+  },
+  {
+    "id": "17735673805218y2v",
+    "timestamp": "2026-03-15T09:36:20.521Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 12 msgs, ~798 tokens",
+    "data": null
+  },
+  {
+    "id": "17735674401604ys6",
+    "timestamp": "2026-03-15T09:37:20.160Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ vậy hãy disable các agent đi, chỉ giữ lại duy nhất bạn thôi",
+    "data": null
+  },
+  {
+    "id": "1773567440163xf37",
+    "timestamp": "2026-03-15T09:37:20.163Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 14 msgs, ~1139 tokens",
+    "data": null
+  },
+  {
+    "id": "17735674455133gba",
+    "timestamp": "2026-03-15T09:37:25.513Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: list_agents",
+    "data": null
+  },
+  {
+    "id": "1773567445515ela4",
+    "timestamp": "2026-03-15T09:37:25.515Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 list_agents({})",
+    "data": null
+  },
+  {
+    "id": "17735674455184hlz",
+    "timestamp": "2026-03-15T09:37:25.518Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":1,\"active\":1,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\",\"skills_count\":0,\"has",
+    "data": null
+  },
+  {
+    "id": "1773567450721u1c7",
+    "timestamp": "2026-03-15T09:37:30.721Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: manage_agent",
+    "data": null
+  },
+  {
+    "id": "17735674507221br8",
+    "timestamp": "2026-03-15T09:37:30.722Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 manage_agent({\"action\":\"disable\",\"agent_id\":\"openrouter-mmq0ffyd\"})",
+    "data": null
+  },
+  {
+    "id": "1773567450726c2sj",
+    "timestamp": "2026-03-15T09:37:30.726Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ manage_agent → {\"ok\":true,\"agent\":\"Openrouter\",\"status\":\"disabled\"}",
+    "data": null
+  },
+  {
+    "id": "17735675567355blv",
+    "timestamp": "2026-03-15T09:39:16.735Z",
+    "level": "info",
+    "source": "agent:openrouter-mmq0ffyd",
+    "message": "→ hello",
+    "data": null
+  },
+  {
+    "id": "1773567556738nwm1",
+    "timestamp": "2026-03-15T09:39:16.738Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Running. Context: 0 msgs",
+    "data": null
+  },
+  {
+    "id": "1773567556742v72o",
+    "timestamp": "2026-03-15T09:39:16.742Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Auto-selected model: google/gemini-2.0-flash-exp:free",
+    "data": null
+  },
+  {
+    "id": "1773567688901yjb5",
+    "timestamp": "2026-03-15T09:41:28.901Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agent created: Test agent (copilot/gpt-5-mini)",
+    "data": null
+  },
+  {
+    "id": "1773567712649ipdc",
+    "timestamp": "2026-03-15T09:41:52.649Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Sent to owner (chatId: 6544034825): Hello boss",
+    "data": null
+  },
+  {
+    "id": "1773567776481erft",
+    "timestamp": "2026-03-15T09:42:56.481Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152: @lucas_daily_report_bot hello",
+    "data": null
+  },
+  {
+    "id": "1773567776485f2z5",
+    "timestamp": "2026-03-15T09:42:56.485Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 16 msgs, ~1194 tokens",
+    "data": null
+  },
+  {
+    "id": "1773567779106gcsq",
+    "timestamp": "2026-03-15T09:42:59.106Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: list_agents",
+    "data": null
+  },
+  {
+    "id": "17735677791076wow",
+    "timestamp": "2026-03-15T09:42:59.107Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 list_agents({})",
+    "data": null
+  },
+  {
+    "id": "17735677791079r3g",
+    "timestamp": "2026-03-15T09:42:59.107Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":2,\"active\":2,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\",\"skills_count\":0,\"has",
+    "data": null
+  },
+  {
+    "id": "1773568224437xjkv",
+    "timestamp": "2026-03-15T09:50:24.437Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ hello",
+    "data": null
+  },
+  {
+    "id": "1773568224439qped",
+    "timestamp": "2026-03-15T09:50:24.439Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 18 msgs, ~1383 tokens",
+    "data": null
+  },
+  {
+    "id": "1773568267597h4nd",
+    "timestamp": "2026-03-15T09:51:07.597Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 2",
+    "data": null
+  },
+  {
+    "id": "1773568267599oysl",
+    "timestamp": "2026-03-15T09:51:07.599Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773568267638ov0e",
+    "timestamp": "2026-03-15T09:51:07.638Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773568267638wb83",
+    "timestamp": "2026-03-15T09:51:07.638Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "1773568267638meoi",
+    "timestamp": "2026-03-15T09:51:07.638Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "17735682676395vaq",
+    "timestamp": "2026-03-15T09:51:07.639Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "177356826767494lv",
+    "timestamp": "2026-03-15T09:51:07.674Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "17735682717698asv",
+    "timestamp": "2026-03-15T09:51:11.769Z",
+    "level": "warn",
+    "source": "telegram",
+    "message": "Auto-reconnect failed: Không kết nối được: EFATAL: AggregateError",
+    "data": null
+  },
+  {
+    "id": "1773568373017k54o",
+    "timestamp": "2026-03-15T09:52:53.017Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ hôm nay ngày bao nhiêu",
+    "data": null
+  },
+  {
+    "id": "1773568373022bczx",
+    "timestamp": "2026-03-15T09:52:53.022Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 20 msgs, ~1415 tokens",
+    "data": null
+  },
+  {
+    "id": "1773568376260zfuz",
+    "timestamp": "2026-03-15T09:52:56.260Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: get_current_time",
+    "data": null
+  },
+  {
+    "id": "1773568376264ut1j",
+    "timestamp": "2026-03-15T09:52:56.264Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 get_current_time({})",
+    "data": null
+  },
+  {
+    "id": "17735683763275zki",
+    "timestamp": "2026-03-15T09:52:56.327Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ get_current_time → {\"iso\":\"2026-03-15T09:52:56.266Z\",\"local\":\"16:52:56 15/3/2026\",\"date\":\"Chủ Nhật, 15 tháng 3, 2026\",\"time\":\"16:52:56\",\"timestamp\":1773568376327,\"timezone\":\"Asia/Ho_Chi_Minh (UTC+7)\"}",
+    "data": null
+  },
+  {
+    "id": "1773568495302rba5",
+    "timestamp": "2026-03-15T09:54:55.302Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Owner chat ID set: 6544034825",
+    "data": null
+  },
+  {
+    "id": "1773568615640wflc",
+    "timestamp": "2026-03-15T09:56:55.640Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 2",
+    "data": null
+  },
+  {
+    "id": "1773568615642sme0",
+    "timestamp": "2026-03-15T09:56:55.642Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "17735686156764v9l",
+    "timestamp": "2026-03-15T09:56:55.676Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773568615676t3qw",
+    "timestamp": "2026-03-15T09:56:55.676Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "17735686156763hf1",
+    "timestamp": "2026-03-15T09:56:55.676Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773568615676sqxt",
+    "timestamp": "2026-03-15T09:56:55.676Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773568615698di4e",
+    "timestamp": "2026-03-15T09:56:55.698Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "17735686198868fuo",
+    "timestamp": "2026-03-15T09:56:59.886Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773568713777b5y1",
+    "timestamp": "2026-03-15T09:58:33.777Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [6544034825]: hello bot",
+    "data": null
+  },
+  {
+    "id": "17735687137801ont",
+    "timestamp": "2026-03-15T09:58:33.780Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 0 msgs, ~162 tokens",
+    "data": null
+  },
+  {
+    "id": "1773568734463q2u1",
+    "timestamp": "2026-03-15T09:58:54.463Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [-5278293022]: @lucas_daily_report_bot hello bot",
+    "data": null
+  },
+  {
+    "id": "1773568734465tit9",
+    "timestamp": "2026-03-15T09:58:54.465Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 0 msgs, ~168 tokens",
+    "data": null
+  },
+  {
+    "id": "1773568794973x0hk",
+    "timestamp": "2026-03-15T09:59:54.973Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [-5278293022]: @lucas_daily_report_bot Tìm xem hôm nay có tin tức gì mới về cuộc chiến ở Iran",
+    "data": null
+  },
+  {
+    "id": "1773568794976setq",
+    "timestamp": "2026-03-15T09:59:54.976Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 2 msgs, ~226 tokens",
+    "data": null
+  },
+  {
+    "id": "1773568801556ksdg",
+    "timestamp": "2026-03-15T10:00:01.556Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: search_web",
+    "data": null
+  },
+  {
+    "id": "1773568801558zphm",
+    "timestamp": "2026-03-15T10:00:01.558Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 search_web({\"max_results\":5,\"query\":\"cuộc chiến ở Iran tin tức hôm nay\"})",
+    "data": null
+  },
+  {
+    "id": "17735688026796a3c",
+    "timestamp": "2026-03-15T10:00:02.679Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ search_web → {\"query\":\"cuộc chiến ở Iran tin tức hôm nay\",\"results\":[],\"note\":\"No results from DDG Instant API. Try a more specific query or use a search agent.\"}",
+    "data": null
+  },
+  {
+    "id": "17735688055140ovp",
+    "timestamp": "2026-03-15T10:00:05.514Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: list_agents",
+    "data": null
+  },
+  {
+    "id": "1773568805515vwm8",
+    "timestamp": "2026-03-15T10:00:05.515Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 list_agents({})",
+    "data": null
+  },
+  {
+    "id": "1773568805518umig",
+    "timestamp": "2026-03-15T10:00:05.518Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":2,\"active\":2,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\",\"skills_count\":0,\"has",
+    "data": null
+  },
+  {
+    "id": "1773568811548g90u",
+    "timestamp": "2026-03-15T10:00:11.548Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: search_web, search_web",
+    "data": null
+  },
+  {
+    "id": "1773568811549tsii",
+    "timestamp": "2026-03-15T10:00:11.549Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 search_web({\"max_results\":5,\"query\":\"tin tức cuộc chiến ở Iran hôm nay\"})",
+    "data": null
+  },
+  {
+    "id": "1773568811553e09n",
+    "timestamp": "2026-03-15T10:00:11.553Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 search_web({\"max_results\":5,\"query\":\"Iran war news today\"})",
+    "data": null
+  },
+  {
+    "id": "1773568811781qxhq",
+    "timestamp": "2026-03-15T10:00:11.781Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ search_web → {\"query\":\"Iran war news today\",\"results\":[],\"note\":\"No results from DDG Instant API. Try a more specific query or use a search agent.\"}",
+    "data": null
+  },
+  {
+    "id": "1773568811795muh1",
+    "timestamp": "2026-03-15T10:00:11.795Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ search_web → {\"query\":\"tin tức cuộc chiến ở Iran hôm nay\",\"results\":[],\"note\":\"No results from DDG Instant API. Try a more specific query or use a search agent.\"}",
+    "data": null
+  },
+  {
+    "id": "17735688255675jpp",
+    "timestamp": "2026-03-15T10:00:25.567Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: http_request, http_request, http_request, http_request",
+    "data": null
+  },
+  {
+    "id": "1773568825568q9q8",
+    "timestamp": "2026-03-15T10:00:25.568Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 http_request({\"url\":\"https://news.google.com/search?q=Iran%20war&hl=vi&gl=VN&ceid=VN:vi\",\"method\":\"GET\",\"timeout_)",
+    "data": null
+  },
+  {
+    "id": "1773568825575tt3l",
+    "timestamp": "2026-03-15T10:00:25.575Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 http_request({\"url\":\"https://www.reuters.com/world/middle-east/\",\"method\":\"GET\",\"timeout_ms\":15000})",
+    "data": null
+  },
+  {
+    "id": "1773568825582ajla",
+    "timestamp": "2026-03-15T10:00:25.582Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 http_request({\"url\":\"https://www.aljazeera.com/search/Iran\",\"method\":\"GET\",\"timeout_ms\":15000})",
+    "data": null
+  },
+  {
+    "id": "1773568825589nyss",
+    "timestamp": "2026-03-15T10:00:25.589Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 http_request({\"url\":\"https://www.bbc.co.uk/search?q=Iran\",\"method\":\"GET\",\"timeout_ms\":15000})",
+    "data": null
+  },
+  {
+    "id": "1773568825664namo",
+    "timestamp": "2026-03-15T10:00:25.664Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ http_request → {\"error\":\"HTTP request failed: fetch failed\",\"url\":\"https://www.bbc.co.uk/search?q=Iran\"}",
+    "data": null
+  },
+  {
+    "id": "1773568825738v2g5",
+    "timestamp": "2026-03-15T10:00:25.738Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ http_request → {\"status\":401,\"ok\":false,\"url\":\"https://www.reuters.com/world/middle-east/\",\"body\":\"<html lang=\\\"en\\\"><head><title>reuters.com</title><style>#cmsg{animation: A 1.5s;}@keyframes A{0%{opacity:0;}99%{opa",
+    "data": null
+  },
+  {
+    "id": "17735688264804a31",
+    "timestamp": "2026-03-15T10:00:26.480Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ http_request → {\"status\":200,\"ok\":true,\"url\":\"https://news.google.com/search?q=Iran%20war&hl=vi&gl=VN&ceid=VN:vi\",\"body\":\"<!doctype html><html lang=\\\"vi\\\" dir=\\\"ltr\\\"><head><base href=\\\"https://news.google.com/\\\"><l",
+    "data": null
+  },
+  {
+    "id": "1773568827077l12x",
+    "timestamp": "2026-03-15T10:00:27.077Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ http_request → {\"status\":200,\"ok\":true,\"url\":\"https://www.aljazeera.com/search/Iran\",\"body\":\"<!doctype html><html lang=\\\"en\\\" dir=\\\"ltr\\\" class=\\\"theme-aje\\\"><head><meta charset=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" co",
+    "data": null
+  },
+  {
+    "id": "1773568865375oohz",
+    "timestamp": "2026-03-15T10:01:05.375Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [-5278293022]: @lucas_daily_report_bot 1",
+    "data": null
+  },
+  {
+    "id": "1773568865380yfyv",
+    "timestamp": "2026-03-15T10:01:05.381Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 4 msgs, ~322 tokens",
+    "data": null
+  },
+  {
+    "id": "1773568868807kcxx",
+    "timestamp": "2026-03-15T10:01:08.807Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: search_web",
+    "data": null
+  },
+  {
+    "id": "17735688688106lbw",
+    "timestamp": "2026-03-15T10:01:08.810Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 search_web({\"query\":\"Iran conflict news today\",\"max_results\":8})",
+    "data": null
+  },
+  {
+    "id": "17735688690482kqk",
+    "timestamp": "2026-03-15T10:01:09.048Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ search_web → {\"query\":\"Iran conflict news today\",\"results\":[],\"note\":\"No results from DDG Instant API. Try a more specific query or use a search agent.\"}",
+    "data": null
+  },
+  {
+    "id": "1773568879047a1ry",
+    "timestamp": "2026-03-15T10:01:19.047Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: call_agent",
+    "data": null
+  },
+  {
+    "id": "17735688790489j5l",
+    "timestamp": "2026-03-15T10:01:19.048Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 call_agent({\"agent_id\":\"search-agent\",\"task\":\"Tìm tin tức quốc tế mới nhất (hôm nay) liên quan đến 'cuộc chiến )",
+    "data": null
+  },
+  {
+    "id": "1773568879049aob5",
+    "timestamp": "2026-03-15T10:01:19.049Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"error\":\"Agent 'search-agent' not found. Use list_agents to see available agents.\"}",
+    "data": null
+  },
+  {
+    "id": "1773568879972zf2n",
+    "timestamp": "2026-03-15T10:01:19.972Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: list_agents",
+    "data": null
+  },
+  {
+    "id": "1773568879974zvqk",
+    "timestamp": "2026-03-15T10:01:19.974Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 list_agents({})",
+    "data": null
+  },
+  {
+    "id": "1773568879976rk2k",
+    "timestamp": "2026-03-15T10:01:19.976Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":2,\"active\":2,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\",\"skills_count\":0,\"has",
+    "data": null
+  },
+  {
+    "id": "1773568886420nxlp",
+    "timestamp": "2026-03-15T10:01:26.420Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: http_request",
+    "data": null
+  },
+  {
+    "id": "1773568886421gtg8",
+    "timestamp": "2026-03-15T10:01:26.421Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 http_request({\"url\":\"https://news.google.com/rss/search?q=Iran+conflict+when:1d&hl=en-US&gl=US&ceid=US:en\",\"metho)",
+    "data": null
+  },
+  {
+    "id": "1773568887413fn73",
+    "timestamp": "2026-03-15T10:01:27.413Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ http_request → {\"status\":200,\"ok\":true,\"url\":\"https://news.google.com/rss/search?q=Iran+conflict+when:1d&hl=en-US&gl=US&ceid=US:en\",\"body\":\"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\" standalone=\\\"yes\\\"?><rss version=\\",
+    "data": null
+  },
+  {
+    "id": "17735690334862pyo",
+    "timestamp": "2026-03-15T10:03:53.486Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [6544034825]: bạn vừa nói gì thế",
+    "data": null
+  },
+  {
+    "id": "1773569033488z0ks",
+    "timestamp": "2026-03-15T10:03:53.488Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 2 msgs, ~199 tokens",
+    "data": null
+  },
+  {
+    "id": "1773569728086veau",
+    "timestamp": "2026-03-15T10:15:28.086Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 2",
+    "data": null
+  },
+  {
+    "id": "177356972808846et",
+    "timestamp": "2026-03-15T10:15:28.088Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773569728200aid7",
+    "timestamp": "2026-03-15T10:15:28.200Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773569728202qt3h",
+    "timestamp": "2026-03-15T10:15:28.202Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "1773569728204woww",
+    "timestamp": "2026-03-15T10:15:28.204Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "17735697282058w43",
+    "timestamp": "2026-03-15T10:15:28.205Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773569728254aj0u",
+    "timestamp": "2026-03-15T10:15:28.254Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773569732038bh9o",
+    "timestamp": "2026-03-15T10:15:32.039Z",
+    "level": "warn",
+    "source": "telegram",
+    "message": "Auto-reconnect failed: Không kết nối được: EFATAL: AggregateError",
+    "data": null
+  },
+  {
+    "id": "1773569808933tt49",
+    "timestamp": "2026-03-15T10:16:48.933Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ bạn có thể tạo cho tôi 1 agent không",
+    "data": null
+  },
+  {
+    "id": "1773569808940ign1",
+    "timestamp": "2026-03-15T10:16:48.940Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 22 msgs, ~1714 tokens",
+    "data": null
+  },
+  {
+    "id": "1773569827556dd93",
+    "timestamp": "2026-03-15T10:17:07.556Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ dịch thuật",
+    "data": null
+  },
+  {
+    "id": "1773569827558ndyb",
+    "timestamp": "2026-03-15T10:17:07.558Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 24 msgs, ~1766 tokens",
+    "data": null
+  },
+  {
+    "id": "1773569999932ijhq",
+    "timestamp": "2026-03-15T10:19:59.932Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ 1: tên là \"Translate agent\", mô tả bạn hãy tự điền\n2. model gpt-5-mini\n3. dùng p",
+    "data": null
+  },
+  {
+    "id": "17735699999352me9",
+    "timestamp": "2026-03-15T10:19:59.935Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 26 msgs, ~2389 tokens",
+    "data": null
+  },
+  {
+    "id": "1773570018167ec45",
+    "timestamp": "2026-03-15T10:20:18.167Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: create_agent",
+    "data": null
+  },
+  {
+    "id": "17735700181713j9z",
+    "timestamp": "2026-03-15T10:20:18.171Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 create_agent({\"name\":\"Translate agent\",\"description\":\"Agent dịch thuật đa ngôn ngữ: tự động nhận diện ngôn ngữ ng)",
+    "data": null
+  },
+  {
+    "id": "1773570018175a5bu",
+    "timestamp": "2026-03-15T10:20:18.175Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agent created: Translate agent (copilot/gpt-5-mini)",
+    "data": null
+  },
+  {
+    "id": "1773570018176vzxh",
+    "timestamp": "2026-03-15T10:20:18.176Z",
+    "level": "info",
+    "source": "tools",
+    "message": "Agent created via chat: \"Translate agent\" (translate-agent-mmrlsoe6)",
+    "data": null
+  },
+  {
+    "id": "1773570018178rr3x",
+    "timestamp": "2026-03-15T10:20:18.178Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ create_agent → {\"ok\":true,\"id\":\"translate-agent-mmrlsoe6\",\"name\":\"Translate agent\",\"provider\":\"copilot\",\"model\":\"gpt-5-mini\",\"message\":\"Agent \\\"Translate agent\\\" đã tạo xong! ID: translate-agent-mmrlsoe6. Chọn trong",
+    "data": null
+  },
+  {
+    "id": "1773570065418tjk1",
+    "timestamp": "2026-03-15T10:21:05.418Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ hãy thử translate sang tiếng việt:\nClears your inbox, sends emails, manages your",
+    "data": null
+  },
+  {
+    "id": "17735700654216iz8",
+    "timestamp": "2026-03-15T10:21:05.421Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 28 msgs, ~2487 tokens",
+    "data": null
+  },
+  {
+    "id": "1773570898350gqfk",
+    "timestamp": "2026-03-15T10:34:58.350Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 3",
+    "data": null
+  },
+  {
+    "id": "1773570898352ra67",
+    "timestamp": "2026-03-15T10:34:58.352Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773570898421d8cm",
+    "timestamp": "2026-03-15T10:34:58.421Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773570898422y6zh",
+    "timestamp": "2026-03-15T10:34:58.422Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "1773570898423ehwz",
+    "timestamp": "2026-03-15T10:34:58.423Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773570898423y9q5",
+    "timestamp": "2026-03-15T10:34:58.423Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773570898484vo1e",
+    "timestamp": "2026-03-15T10:34:58.484Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773570902268ewxm",
+    "timestamp": "2026-03-15T10:35:02.268Z",
+    "level": "warn",
+    "source": "telegram",
+    "message": "Auto-reconnect failed: Không kết nối được: EFATAL: AggregateError",
+    "data": null
+  },
+  {
+    "id": "1773570970878b52c",
+    "timestamp": "2026-03-15T10:36:10.878Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ Hello, từ giờ bạn sẽ tên là Lucas, quản gia của tôi (Nam) nhé. Nếu có bất cứ ai ",
+    "data": null
+  },
+  {
+    "id": "1773570970886altk",
+    "timestamp": "2026-03-15T10:36:10.886Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 30 msgs, ~2608 tokens",
+    "data": null
+  },
+  {
+    "id": "1773570978352ue3a",
+    "timestamp": "2026-03-15T10:36:18.352Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: save_lesson",
+    "data": null
+  },
+  {
+    "id": "17735709783553su7",
+    "timestamp": "2026-03-15T10:36:18.355Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 save_lesson({\"lesson\":\"User prefers the assistant to be named 'Lucas', to act as his male butler. If anyone asks)",
+    "data": null
+  },
+  {
+    "id": "1773570978359u3rn",
+    "timestamp": "2026-03-15T10:36:18.359Z",
+    "level": "info",
+    "source": "self-learn",
+    "message": "New lesson (user_preference): User prefers the assistant to be named 'Lucas', to act as his male butler. If an",
+    "data": null
+  },
+  {
+    "id": "17735709783628oxd",
+    "timestamp": "2026-03-15T10:36:18.362Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ save_lesson → {\"saved\":true,\"id\":\"mmrmd99y\",\"total_lessons\":1}",
+    "data": null
+  },
+  {
+    "id": "17735710410457aj8",
+    "timestamp": "2026-03-15T10:37:21.045Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 3",
+    "data": null
+  },
+  {
+    "id": "1773571041047c0k3",
+    "timestamp": "2026-03-15T10:37:21.047Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "17735710410812llt",
+    "timestamp": "2026-03-15T10:37:21.081Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773571041082h689",
+    "timestamp": "2026-03-15T10:37:21.082Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "1773571041082dg80",
+    "timestamp": "2026-03-15T10:37:21.082Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571041082jj5i",
+    "timestamp": "2026-03-15T10:37:21.082Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773571041107ji8c",
+    "timestamp": "2026-03-15T10:37:21.107Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571045110fihg",
+    "timestamp": "2026-03-15T10:37:25.110Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "17735710459061bhh",
+    "timestamp": "2026-03-15T10:37:25.906Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [-5278293022]: @lucas_daily_report_bot bạn là ai",
+    "data": null
+  },
+  {
+    "id": "17735710459081kdr",
+    "timestamp": "2026-03-15T10:37:25.908Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 6 msgs, ~909 tokens",
+    "data": null
+  },
+  {
+    "id": "17735710693839mrp",
+    "timestamp": "2026-03-15T10:37:49.383Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ bạn là ai",
+    "data": null
+  },
+  {
+    "id": "1773571069385hlzs",
+    "timestamp": "2026-03-15T10:37:49.385Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 32 msgs, ~2670 tokens",
+    "data": null
+  },
+  {
+    "id": "17735711155704yj1",
+    "timestamp": "2026-03-15T10:38:35.570Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [6544034825]: bạn là ai",
+    "data": null
+  },
+  {
+    "id": "1773571115575gp3k",
+    "timestamp": "2026-03-15T10:38:35.575Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 4 msgs, ~509 tokens",
+    "data": null
+  },
+  {
+    "id": "177357116328222b3",
+    "timestamp": "2026-03-15T10:39:23.282Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ tôi cần bạn cập nhật lại cho các đoạn chat telegram nữa. Nếu bất cứ ai nhắn tin ",
+    "data": null
+  },
+  {
+    "id": "17735711632879p0q",
+    "timestamp": "2026-03-15T10:39:23.287Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 34 msgs, ~2774 tokens",
+    "data": null
+  },
+  {
+    "id": "1773571184707y4jh",
+    "timestamp": "2026-03-15T10:39:44.707Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: save_lesson, update_agent",
+    "data": null
+  },
+  {
+    "id": "1773571184710yg0p",
+    "timestamp": "2026-03-15T10:39:44.710Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 save_lesson({\"lesson\":\"When anyone asks \\\"bạn là ai\\\" in Telegram chats or any chat to the bot, the assistant sh)",
+    "data": null
+  },
+  {
+    "id": "17735711847134kit",
+    "timestamp": "2026-03-15T10:39:44.713Z",
+    "level": "info",
+    "source": "self-learn",
+    "message": "New lesson (user_preference): When anyone asks \"bạn là ai\" in Telegram chats or any chat to the bot, the assis",
+    "data": null
+  },
+  {
+    "id": "1773571184714guc9",
+    "timestamp": "2026-03-15T10:39:44.714Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 update_agent({\"agent_id\":\"translate-agent-mmrlsoe6\",\"skills\":[\"If asked \\\"bạn là ai\\\" (or similar \\\"who are you\\\")",
+    "data": null
+  },
+  {
+    "id": "17735711847167tg8",
+    "timestamp": "2026-03-15T10:39:44.716Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ save_lesson → {\"saved\":true,\"id\":\"mmrmhoi0\",\"total_lessons\":1}",
+    "data": null
+  },
+  {
+    "id": "1773571184717hwst",
+    "timestamp": "2026-03-15T10:39:44.717Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ update_agent → {\"ok\":true,\"id\":\"translate-agent-mmrlsoe6\",\"name\":\"Translate agent\",\"message\":\"Agent \\\"Translate agent\\\" đã cập nhật: skills, systemPrompt.\"}",
+    "data": null
+  },
+  {
+    "id": "1773571243756a2uy",
+    "timestamp": "2026-03-15T10:40:43.756Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152 [6544034825]: bạn là ai?",
+    "data": null
+  },
+  {
+    "id": "1773571243759amo1",
+    "timestamp": "2026-03-15T10:40:43.759Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 6 msgs, ~591 tokens",
+    "data": null
+  },
+  {
+    "id": "1773571368384z9l7",
+    "timestamp": "2026-03-15T10:42:48.384Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ không cần update context đấy cho translate agent, chỉ cần bạn hiểu thôi. Hãy thê",
+    "data": null
+  },
+  {
+    "id": "1773571368386uj9p",
+    "timestamp": "2026-03-15T10:42:48.386Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 36 msgs, ~2886 tokens",
+    "data": null
+  },
+  {
+    "id": "17735713823558hxh",
+    "timestamp": "2026-03-15T10:43:02.355Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: update_agent",
+    "data": null
+  },
+  {
+    "id": "17735713823564k25",
+    "timestamp": "2026-03-15T10:43:02.356Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 update_agent({\"agent_id\":\"translate-agent-mmrlsoe6\",\"skills\":[\"Auto-detect source language unless user specifies )",
+    "data": null
+  },
+  {
+    "id": "1773571382356cmpx",
+    "timestamp": "2026-03-15T10:43:02.356Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ update_agent → {\"ok\":true,\"id\":\"translate-agent-mmrlsoe6\",\"name\":\"Translate agent\",\"message\":\"Agent \\\"Translate agent\\\" đã cập nhật: skills.\"}",
+    "data": null
+  },
+  {
+    "id": "1773571495781td0r",
+    "timestamp": "2026-03-15T10:44:55.781Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773571495786drex",
+    "timestamp": "2026-03-15T10:44:55.786Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571495846652b",
+    "timestamp": "2026-03-15T10:44:55.846Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773571495846mh0f",
+    "timestamp": "2026-03-15T10:44:55.846Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "17735714958478xlx",
+    "timestamp": "2026-03-15T10:44:55.847Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571495847g4v8",
+    "timestamp": "2026-03-15T10:44:55.847Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773571495873ntlm",
+    "timestamp": "2026-03-15T10:44:55.873Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571499647gaxd",
+    "timestamp": "2026-03-15T10:44:59.647Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "17735715295286hfc",
+    "timestamp": "2026-03-15T10:45:29.528Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773571529531tq8d",
+    "timestamp": "2026-03-15T10:45:29.531Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571529576ts5g",
+    "timestamp": "2026-03-15T10:45:29.576Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773571529576jqdo",
+    "timestamp": "2026-03-15T10:45:29.576Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "1773571529577f9ls",
+    "timestamp": "2026-03-15T10:45:29.577Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571529578q6z4",
+    "timestamp": "2026-03-15T10:45:29.579Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773571529631d0ic",
+    "timestamp": "2026-03-15T10:45:29.631Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571533500oin3",
+    "timestamp": "2026-03-15T10:45:33.500Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773571535837g7g0",
+    "timestamp": "2026-03-15T10:45:35.837Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ Hello",
+    "data": null
+  },
+  {
+    "id": "1773571535846hh2f",
+    "timestamp": "2026-03-15T10:45:35.846Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 38 msgs, ~2922 tokens",
+    "data": null
+  },
+  {
+    "id": "17735715609468prx",
+    "timestamp": "2026-03-15T10:46:00.946Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773571560948l83i",
+    "timestamp": "2026-03-15T10:46:00.948Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Model set: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571560981qy63",
+    "timestamp": "2026-03-15T10:46:00.981Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain OS running on http://localhost:3333",
+    "data": null
+  },
+  {
+    "id": "1773571560982uie0",
+    "timestamp": "2026-03-15T10:46:00.982Z",
+    "level": "info",
+    "source": "system",
+    "message": "Provider: GitHub Copilot via copilot-api (http://localhost:4141)",
+    "data": null
+  },
+  {
+    "id": "17735715609826ktr",
+    "timestamp": "2026-03-15T10:46:00.982Z",
+    "level": "info",
+    "source": "system",
+    "message": "Brain model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "177357156098351l7",
+    "timestamp": "2026-03-15T10:46:00.983Z",
+    "level": "info",
+    "source": "system",
+    "message": "Run 'npx copilot-api@latest start' if not already running",
+    "data": null
+  },
+  {
+    "id": "1773571560998lsfj",
+    "timestamp": "2026-03-15T10:46:00.998Z",
+    "level": "info",
+    "source": "brain",
+    "message": "✅ copilot-api connected at http://localhost:4141. Model: gpt-5-mini",
+    "data": null
+  },
+  {
+    "id": "1773571565542c6ym",
+    "timestamp": "2026-03-15T10:46:05.542Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773571574691s03e",
+    "timestamp": "2026-03-15T10:46:14.691Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ bây giờ là mấy giờ",
+    "data": null
+  },
+  {
+    "id": "17735715746952rk2",
+    "timestamp": "2026-03-15T10:46:14.695Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 40 msgs, ~2956 tokens",
+    "data": null
+  },
+  {
+    "id": "17735715789805ez9",
+    "timestamp": "2026-03-15T10:46:18.980Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Tool calls: get_current_time",
+    "data": null
+  },
+  {
+    "id": "1773571578985uepq",
+    "timestamp": "2026-03-15T10:46:18.985Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 get_current_time({})",
+    "data": null
+  },
+  {
+    "id": "1773571579034e4bh",
+    "timestamp": "2026-03-15T10:46:19.034Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ get_current_time → {\"iso\":\"2026-03-15T10:46:18.989Z\",\"local\":\"17:46:18 15/3/2026\",\"date\":\"Chủ Nhật, 15 tháng 3, 2026\",\"time\":\"17:46:18\",\"timestamp\":1773571579034,\"timezone\":\"Asia/Ho_Chi_Minh (UTC+7)\"}",
+    "data": null
+  },
+  {
+    "id": "177357168580370i6",
+    "timestamp": "2026-03-15T10:48:05.803Z",
+    "level": "info",
+    "source": "brain",
+    "message": "→ bạn đang dùng công cụ nào để search?",
+    "data": null
+  },
+  {
+    "id": "1773571685810ah24",
+    "timestamp": "2026-03-15T10:48:05.810Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Chat start. Context: 40 msgs, ~2969 tokens",
+    "data": null
+  },
+  {
+    "id": "1773571762356wv3o",
+    "timestamp": "2026-03-15T10:49:22.356Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "→ owner: Hello boss",
+    "data": null
+  }
+]

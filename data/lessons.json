@@ -1,29 +1,11 @@
 [
   {
-    "id": "mmqiavqj",
-    "type": "tool_error",
-    "trigger": "call_agent:{\"agent_id\":\"openrouter-mmq0yd\",\"task\":\"tìm kiếm t",
-    "lesson": "Khi gọi agent \"openrouter-mmq0yd\", agent đó không tồn tại. Hãy dùng list_agents trước để kiểm tra agent IDs.",
+    "id": "mmrmhoi0",
+    "type": "user_preference",
+    "trigger": "When anyone asks \"bạn là ai\" in Telegram chats or any chat t",
+    "lesson": "When anyone asks \"bạn là ai\" in Telegram chats or any chat to the bot, the assistant should reply: \"Mình là Lucas, quản gia của bạn (Nam) — bộ não AI trung tâm của hệ thống Brain OS. Mình hỗ trợ trả lời câu hỏi, thực hiện tác vụ, điều phối các agent chuyên biệt và giúp bạn quản lý thông tin.\" Respond in Vietnamese and use this persona when asked.",
     "context": "",
-    "timestamp": 1773503682859,
-    "useCount": 0
-  },
-  {
-    "id": "mmqj30ct",
-    "type": "tool_error",
-    "trigger": "call_agent:{\"agent_id\":\"search-agent\",\"task\":\"Tím kiế̃m thông",
-    "lesson": "Khi gọi agent \"search-agent\", agent đó không tồn tại. Hãy dùng list_agents trước để kiểm tra agent IDs.",
-    "context": "",
-    "timestamp": 1773504995213,
-    "useCount": 0
-  },
-  {
-    "id": "mmqj5sax",
-    "type": "tool_error",
-    "trigger": "call_agent:{\"agent_id\":\"dev-agent\",\"task\":\"hello world python",
-    "lesson": "Khi gọi agent \"dev-agent\", agent đó không tồn tại. Hãy dùng list_agents trước để kiểm tra agent IDs.",
-    "context": "",
-    "timestamp": 1773505124745,
+    "timestamp": 1773571184712,
     "useCount": 0
   }
 ]

@@ -1,124 +1,169 @@
 /**
- * Brain — Local LLM via Ollama with Tool Calling
+ * brain.js — Orchestrator sử dụng GitHub Copilot (via copilot-api local proxy)
  *
- * The brain is a small local model whose job is:
- *  1. Routing: decide which agent should handle the request
- *  2. Tool calling: autonomously use tools (time, agents, system, CLI, etc.)
- *  3. Summarization: compress old context into summaries
- *  4. Direct chat: answer the user when no specialized agent is needed
+ * Thay thế hoàn toàn Groq. Brain giao tiếp với copilot-api chạy local:
+ *   npx copilot-api@latest start   →  http://localhost:4141
  *
- * Tool calling flow:
- *  User input → Ollama (with tool definitions) → tool_calls?
- *    YES → execute tools → send results → Ollama generates final response
- *    NO  → direct response to user
+ * copilot-api expose OpenAI-compatible endpoint nên request format giữ nguyên.
+ *
+ * Setup 1 lần:
+ *   npx copilot-api@latest auth      ← đăng nhập GitHub (device flow)
+ *   npx copilot-api@latest start     ← giữ chạy (hoặc dùng daemon)
+ *
+ * Model names (Copilot Pro):
+ *   gpt-4o          — balanced, x1 premium
+ *   gpt-4o-mini     — nhanh, FREE (unlimited)
+ *   gpt-4.1         — mới, x1 premium
+ *   gpt-4.1-mini    — nhanh, FREE (unlimited)
+ *   claude-sonnet-4.5      — mạnh nhất Claude, x1 premium
+ *   claude-haiku-3.5  — nhanh, x1 premium
+ *   o1-mini         — reasoning, x3 premium
+ *   o3-mini         — reasoning mạnh, x3 premium
+ *   gemini-2.0-flash — nhanh, FREE (unlimited)
  */
 
 const logger = require('./logger');
-const memory = require('./memory');
 const tools = require('./tools');
-const selfLearn = require('./self-learn');
+const memory = require('./memory');
 
-const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-// API key: env var ưu tiên, fallback hardcoded (nên chuyển sang .env)
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
+// ─── Config ───────────────────────────────────────────────────────────────────
 
-// Groq models thực tế — không dùng format openrouter
-const GROQ_MODELS = {
-  fast: 'llama-3.1-8b-instant',        // routing nhanh, tool calling đơn giản
-  smart: 'openai/gpt-oss-20b',     // reasoning, tool calling phức tạp
-  default: 'openai/gpt-oss-20b',
-};
-const MAX_TOOL_ITERATIONS = 5;
+const COPILOT_BASE = process.env.COPILOT_API_URL || 'http://localhost:4141';
+const COPILOT_CHAT = `${COPILOT_BASE}/v1/chat/completions`;
+const COPILOT_MODELS = `${COPILOT_BASE}/v1/models`;
 
-const BRAIN_SYSTEM_PROMPT = `Bạn là Brain — bộ não AI trung tâm của hệ thống Brain OS, chạy local trên máy của Nam.
-
-## Vai trò
-1. **Điều phối tự động**: phân tích input, tự quyết định gọi tool hay agent nào
-2. **Sử dụng tools**: BẠN CÓ TOOLS THỰC SỰ — hãy dùng khi cần thông tin thực tế
-3. **Chat trực tiếp**: câu hỏi chung, lập kế hoạch, tư vấn — không cần tool
-4. **KHÔNG BAO GIỜ BỊA** thông tin thời gian, hệ thống, agents — hãy gọi tool
-
-## Khi nào gọi tool
-- Hỏi thời gian/ngày → get_current_time
-- Hỏi về agents → list_agents
-- Hỏi về hệ thống → get_system_status
-- Cần code/debug → call_agent (dev agent)
-- Cần tìm kiếm → call_agent (search agent)
-- Hỏi về memory → get_memory_stats
-- Cần chạy lệnh → run_command
-- Bật/tắt agent → manage_agent
-- Có thể gọi NHIỀU tools cùng lúc nếu cần
-
-## Nguyên tắc
-- Tiếng Việt khi user viết tiếng Việt
-- Ngắn gọn, thẳng vào vấn đề
-- Ưu tiên giải pháp thực tế
-- Chỉ gọi tool khi CẦN THIẾT, không gọi thừa`;
-
-
-let config = {
-  model: GROQ_MODELS.default,
+const config = {
   available: false,
+  model: 'gpt-5-mini',
+  models: [],
+  provider: 'copilot',
+  baseUrl: COPILOT_BASE,
 };
 
-// ─── Health check ─────────────────────────────────────────────────────────────
+// ─── Known Copilot models with quota info ─────────────────────────────────────
 
-async function checkOllama() {
-  selfLearn.init();
-  if (GROQ_API_KEY) {
-    config.available = true;
-    config.models = [GROQ_MODELS.smart, GROQ_MODELS.fast];
-    logger.info('brain', `Groq ready. Model: ${config.model}`);
-    return true;
-  } else {
-    config.available = false;
-    logger.warn('brain', 'GROQ_API_KEY not set');
-    return false;
+const KNOWN_MODELS = [
+  { id: 'gpt-5-mini',        quota: 'free',    label: 'GPT-5 Mini (Free)' },
+  { id: 'gpt-4.1-mini',       quota: 'free',    label: 'GPT-4.1 Mini (Free)' },
+  { id: 'gpt-4o-mini',        quota: 'free',    label: 'GPT-4o Mini (Free)' },
+  { id: 'gemini-2.0-flash',   quota: 'free',    label: 'Gemini 2.0 Flash (Free)' },
+  { id: 'gpt-4.1',            quota: 'x1',      label: 'GPT-4.1 (x1)' },
+  { id: 'gpt-4o',             quota: 'x1',      label: 'GPT-4o (x1)' },
+  { id: 'claude-sonnet-4.5',  quota: 'x1',      label: 'Claude Sonnet 4.5 (x1)' },
+  { id: 'claude-haiku-3.5',   quota: 'x1',      label: 'Claude Haiku 3.5 (x1)' },
+  { id: 'o1-mini',            quota: 'x3',      label: 'o1 Mini (x3 premium)' },
+  { id: 'o3-mini',            quota: 'x3',      label: 'o3 Mini (x3 premium)' },
+  { id: 'o1',                 quota: 'x5',      label: 'o1 (x5 premium)' },
+];
+
+// ─── Check copilot-api availability ───────────────────────────────────────────
+
+async function checkOllama() { // kept as checkOllama for API compatibility
+  try {
+    const res = await fetch(COPILOT_MODELS, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json();
+      // Merge discovered models with known quota info
+      const discovered = (data.data || []).map(m => {
+        const known = KNOWN_MODELS.find(k => k.id === m.id);
+        return known || { id: m.id, quota: 'x1', label: m.id };
+      });
+      config.models = discovered.length ? discovered : KNOWN_MODELS;
+      config.available = true;
+      logger.info('brain', `✅ copilot-api connected at ${COPILOT_BASE}. Model: ${config.model}`);
+      return true;
+    }
+  } catch (e) {
+    // Not running
   }
+  config.available = false;
+  logger.warn('brain', `copilot-api not reachable at ${COPILOT_BASE}. Run: npx copilot-api@latest start`);
+  return false;
 }
+
+function setModel(model) {
+  config.model = model || 'gpt-5-mini';
+  logger.info('brain', `Model set: ${config.model}`);
+}
+
+function getConfig() { return { ...config }; }
+
+// ─── Brain system prompt ───────────────────────────────────────────────────────
+
+const BRAIN_SYSTEM = `Bạn là Brain — bộ não AI trung tâm của hệ thống Brain OS.
+
+NHIỆM VỤ CHÍNH:
+- Trả lời câu hỏi thông thường trực tiếp và ngắn gọn
+- Tự quyết định khi nào cần gọi tool (không gọi thừa)
+- Giao task phức tạp cho đúng agent chuyên biệt qua call_agent
+- KHÔNG BAO GIỜ BỊA thông tin — gọi tool khi cần dữ liệu thực
+
+TOOLS có thể dùng song song (parallel) khi cần nhiều thông tin cùng lúc.
+
+─── TẠO AGENT MỚI ───
+Khi user muốn tạo agent mới, hãy làm wizard từng bước:
+
+Bước 1 — Hỏi mục đích:
+"Bạn muốn agent này làm gì? (VD: viết nội dung, dịch thuật, phân tích dữ liệu, coding...)"
+
+Bước 2 — Đề xuất tên + description, xác nhận với user.
+
+Bước 3 — Hỏi provider/model, đưa ra gợi ý phù hợp:
+• Copilot gpt-5-mini — miễn phí, tốt cho hầu hết tác vụ
+• Copilot gpt-4.1 — mạnh hơn, tốt cho writing/analysis
+• Copilot claude-sonnet-4-5 — tốt nhất cho coding/analysis (x1 quota)
+• Gemini gemini-2.0-flash — nhanh, miễn phí, tốt cho search/research
+Hỏi: "Bạn muốn dùng provider nào? [1] Copilot gpt-5-mini (free) [2] Copilot gpt-4.1 [3] Copilot claude-sonnet-4-5 [4] Gemini"
+
+Bước 4 — Tự soạn system prompt chuyên nghiệp dựa trên mục đích, hỏi user có muốn chỉnh không.
+
+Bước 5 — Hỏi có muốn thêm skills cụ thể không (VD: "Luôn trả lời tiếng Việt", "Dùng markdown tables khi so sánh").
+
+Bước 6 — Xác nhận lần cuối rồi gọi tool create_agent.
+
+Sau khi tạo xong, thông báo rõ: agent đã sẵn sàng, hướng dẫn chọn trong dropdown Chat.
+
+Trả lời bằng tiếng Việt trừ khi user dùng ngôn ngữ khác.`;
 
 // ─── Non-streaming call with tools ────────────────────────────────────────────
 
 async function callWithTools(messages, model) {
-  const res = await fetch(GROQ_API, {
+  const useModel = model || config.model;
+  const res = await fetch(COPILOT_CHAT, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: model || config.model,
+      model: useModel,
       messages,
       tools: tools.TOOL_DEFINITIONS,
-      stream: false
-    })
+      tool_choice: 'auto',
+      stream: false,
+      max_tokens: 4096,
+    }),
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Groq error: ${res.status} ${err}`);
+    throw new Error(`copilot-api error: ${res.status} ${err}`);
   }
   const data = await res.json();
-  return data.choices[0]; // Returns { message: { role: 'assistant', content: '...', tool_calls: [...] } }
+  return data.choices[0];
 }
 
-// ─── Stream a response from Groq (no tools, for final response) ─────────────
+// ─── Stream response (no tools, for final answer) ─────────────────────────────
 
 async function streamChat({ messages, model, onToken, onDone, onError }) {
   const useModel = model || config.model;
 
   try {
-    const res = await fetch(GROQ_API, {
+    const res = await fetch(COPILOT_CHAT, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ model: useModel, messages, stream: true }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: useModel, messages, stream: true, max_tokens: 4096 }),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`Groq error: ${res.status} ${err}`);
+      throw new Error(`copilot-api stream error: ${res.status} ${err}`);
     }
 
     const reader = res.body.getReader();
@@ -153,20 +198,17 @@ async function streamChat({ messages, model, onToken, onDone, onError }) {
   }
 }
 
-// ─── Non-streaming single call (for internal tasks like summarization) ────────
+// ─── Non-streaming single call (summarization, internal tasks) ────────────────
 
 async function call(messages, model = null) {
   const useModel = model || config.model;
   try {
-    const res = await fetch(GROQ_API, {
+    const res = await fetch(COPILOT_CHAT, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ model: useModel, messages, stream: false }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: useModel, messages, stream: false, max_tokens: 2048 }),
     });
-    if (!res.ok) throw new Error(`Groq error: ${res.status}`);
+    if (!res.ok) throw new Error(`copilot-api: ${res.status}`);
     const data = await res.json();
     return data.choices[0]?.message?.content || '';
   } catch (e) {
@@ -175,159 +217,164 @@ async function call(messages, model = null) {
   }
 }
 
-// ─── Main brain chat (with tool calling) ──────────────────────────────────────
+// ─── Main brain chat (with tool calling loop) ─────────────────────────────────
 
 async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, onToolCall }) {
   if (!config.available) {
     await checkOllama();
     if (!config.available) {
-      onError(new Error('Groq API Key is not set. Please set GROQ_API_KEY environment variable.'));
+      onError(new Error(
+        'copilot-api chưa chạy. Hãy chạy: npx copilot-api@latest start\n' +
+        '(Lần đầu: npx copilot-api@latest auth để đăng nhập GitHub)'
+      ));
       return;
     }
   }
 
-  // Self-learn: analyze nếu user đang correction
-  selfLearn.analyzeConversation({ userInput, toolsUsed: [], errors: [] });
-
-  // Assemble prompt với context + lessons từ kinh nghiệm
+  // Assemble context from memory
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
     agentId,
-    systemPrompt: BRAIN_SYSTEM_PROMPT + selfLearn.buildLessonsContext(userInput),
-    tokenBudget: 3000,
+    systemPrompt: BRAIN_SYSTEM,
+    tokenBudget: 4000,
   });
-
-  logger.debug('brain', `Context: ${assembled.stats.selectedMessages}/${assembled.stats.totalMessages} msgs, ~${assembled.stats.estimatedTokens} tokens, lessons: ${selfLearn.getLessonCount()}`);
 
   const messages = [
     { role: 'system', content: assembled.systemPrompt },
     ...assembled.context,
-    { role: 'user', content: userInput }
+    { role: 'user', content: userInput },
   ];
 
+  logger.debug('brain', `Chat start. Context: ${assembled.stats.selectedMessages} msgs, ~${assembled.stats.estimatedTokens} tokens`);
+
+  // Store user input
   memory.store('user', userInput, agentId);
 
-  const toolErrors = [];
+  // Tool calling loop (max 5 iterations)
+  let loopMessages = [...messages];
+  let loopCount = 0;
+  const MAX_LOOPS = 5;
 
-  try {
-    let response = await callWithTools(messages, config.model);
+  while (loopCount < MAX_LOOPS) {
+    loopCount++;
 
-    let iterations = 0;
-    let toolsUsed = false;
+    let choice;
+    try {
+      choice = await callWithTools(loopMessages, config.model);
+    } catch (e) {
+      logger.error('brain', `Tool loop error: ${e.message}`);
+      onError(e);
+      return;
+    }
 
-    while (response.message?.tool_calls?.length > 0 && iterations < MAX_TOOL_ITERATIONS) {
-      toolsUsed = true;
-      iterations++;
+    const msg = choice.message;
 
-      messages.push(response.message);
-
-      const toolCalls = response.message.tool_calls;
-      logger.info('brain', `Tool calls (round ${iterations}): ${toolCalls.map(tc => tc.function.name).join(', ')}`);
-
-      const results = await Promise.all(
-        toolCalls.map(async (tc) => {
-          if (onToolCall) onToolCall(tc.function.name, tc.function.arguments);
-          const result = await tools.executeTool(tc);
-
-          // Self-learn: ghi nhận lỗi tool
-          if (result?.error) {
-            const args = typeof tc.function.arguments === 'string'
-              ? JSON.parse(tc.function.arguments)
-              : tc.function.arguments;
-            toolErrors.push({ tool: tc.function.name, args, error: result.error, userInput });
-            selfLearn.learnFromToolError({ toolName: tc.function.name, args, error: result.error, userInput });
-          }
-          return result;
-        })
-      );
-
-      for (let i = 0; i < toolCalls.length; i++) {
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCalls[i].id,
-          name: toolCalls[i].function.name,
-          content: JSON.stringify(results[i])
+    // No tool calls → stream final response
+    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      // If content already exists, stream it
+      if (msg.content) {
+        // Stream word by word for smooth UX
+        const words = msg.content.split('');
+        for (const char of words) onToken(char);
+        memory.store('assistant', msg.content, agentId);
+        onDone(msg.content, assembled.stats);
+      } else {
+        // Re-call without tools for streaming
+        const finalMessages = [...loopMessages, msg];
+        await streamChat({
+          messages: finalMessages,
+          model: config.model,
+          onToken,
+          onDone: (content) => {
+            memory.store('assistant', content, agentId);
+            onDone(content, assembled.stats);
+          },
+          onError,
         });
       }
-
-      response = await callWithTools(messages, config.model);
+      return;
     }
 
-    if (toolsUsed) {
-      await streamChat({
-        messages,
-        model: config.model,
-        onToken,
-        onDone: (content) => {
-          memory.store('assistant', content, agentId);
-          logger.info('brain', `Responded with tools (${iterations} rounds, ${content.length} chars)`);
-          onDone(content, { ...assembled.stats, toolsUsed: true, toolIterations: iterations });
-        },
-        onError
+    // Execute tools
+    logger.debug('brain', `Tool calls: ${msg.tool_calls.map(t => t.function.name).join(', ')}`);
+
+    // Notify UI about tool calls
+    if (onToolCall) {
+      msg.tool_calls.forEach(tc => {
+        onToolCall({
+          tool: tc.function.name,
+          args: tc.function.arguments,
+        });
       });
-    } else {
-      const content = response.message?.content || '';
-      onToken(content);
-      memory.store('assistant', content, agentId);
-      logger.info('brain', `Responded directly (${content.length} chars)`);
-      onDone(content, { ...assembled.stats, toolsUsed: false });
     }
 
-  } catch (e) {
-    logger.error('brain', `Chat error: ${e.message}`);
-    onError(e);
+    loopMessages.push(msg);
+
+    // Execute tools in parallel
+    const toolResults = await tools.executeToolsParallel(
+      msg.tool_calls.map(tc => ({
+        id: tc.id,
+        function: {
+          name: tc.function.name,
+          arguments: typeof tc.function.arguments === 'string'
+            ? JSON.parse(tc.function.arguments || '{}')
+            : tc.function.arguments,
+        },
+      }))
+    );
+
+    // Add tool results to messages
+    for (let i = 0; i < msg.tool_calls.length; i++) {
+      loopMessages.push({
+        role: 'tool',
+        tool_call_id: msg.tool_calls[i].id,
+        content: JSON.stringify(toolResults[i]),
+      });
+    }
   }
+
+  // Max loops reached — stream whatever we have
+  await streamChat({
+    messages: loopMessages,
+    model: config.model,
+    onToken,
+    onDone: (content) => {
+      memory.store('assistant', content, agentId);
+      onDone(content, assembled.stats);
+    },
+    onError,
+  });
 }
 
-// ─── Summarize old context ────────────────────────────────────────────────────
+// ─── Summarize history ─────────────────────────────────────────────────────────
 
 async function summarizeHistory(agentId = 'brain') {
-  const hist = memory.getHistory(agentId, 50);
-  if (hist.length < 20) return null;
+  const history = memory.getHistory(agentId, 50);
+  if (history.length < 10) return 'Chưa đủ lịch sử để tóm tắt.';
 
-  const toSummarize = hist.slice(0, -10);
-  const prompt = `Summarize the following conversation history concisely (max 200 words). Extract key facts, decisions, and context that might be needed later:\n\n${toSummarize.map(m => `${m.role}: ${m.content}`).join('\n')}`;
-
-  const summary = await call([
-    { role: 'system', content: 'You are a summarization assistant. Be concise and factual.' },
-    { role: 'user', content: prompt }
-  ]);
-
-  if (summary) {
-    memory.storeSummary(agentId, summary, toSummarize.map(m => m.id));
-    logger.info('brain', `Summarized ${toSummarize.length} messages → ${summary.length} chars`);
-  }
-
-  return summary;
-}
-
-// ─── Route: ask brain to decide which agent should handle input ───────────────
-
-async function routeToAgent(userInput, availableAgents) {
-  if (!availableAgents.length) return null;
-
-  const agentList = availableAgents.map(a => `- ${a.id}: ${a.description}`).join('\n');
-  const prompt = `Given this user message: "${userInput}"\n\nAvailable agents:\n${agentList}\n\nWhich agent ID is most appropriate? Reply with ONLY the agent ID, or "brain" if none fits.`;
+  const text = history
+    .slice(-50)
+    .map(m => `${m.role}: ${m.content}`)
+    .join('\n');
 
   const result = await call([
-    { role: 'system', content: 'You route user requests to the appropriate agent. Reply with only the agent ID.' },
-    { role: 'user', content: prompt }
+    {
+      role: 'user',
+      content: `Tóm tắt ngắn gọn cuộc hội thoại sau, giữ các thông tin quan trọng:\n\n${text}`,
+    },
   ]);
 
-  const agentId = result?.trim().toLowerCase();
-  const valid = availableAgents.find(a => a.id === agentId);
-  return valid ? agentId : null;
+  if (result) memory.storeSummary(agentId, result, []);
+  return result || 'Không thể tóm tắt.';
 }
 
 module.exports = {
-  init: checkOllama,
   checkOllama,
+  setModel,
+  getConfig,
   chat,
-  streamChat,
   call,
+  streamChat,
   summarizeHistory,
-  routeToAgent,
-  getConfig: () => config,
-  setModel: (model) => { config.model = model; },
-  BRAIN_SYSTEM_PROMPT,
+  KNOWN_MODELS,
 };

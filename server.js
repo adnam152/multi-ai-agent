@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 /**
  * Brain OS — Main Server
- * Run: node server.js [--port 3333] [--model qwen2.5:3b]
+ * Run: node server.js [--port 3333] [--model gpt-5-mini]
+ *
+ * Yêu cầu: copilot-api đang chạy tại http://localhost:4141
+ *   npx copilot-api@latest start
  */
 
 const express = require('express');
@@ -28,7 +31,7 @@ const getArg = (flag, def) => {
   return i !== -1 && args[i + 1] ? args[i + 1] : def;
 };
 const PORT = parseInt(getArg('--port', process.env.PORT || '3333'));
-const MODEL = getArg('--model', process.env.BRAIN_MODEL || 'openai/gpt-oss-20b');
+const MODEL = getArg('--model', process.env.BRAIN_MODEL || 'gpt-5-mini');
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 logger.init();
@@ -37,19 +40,28 @@ agents.init();
 telegram.init(brain);
 brain.setModel(MODEL);
 
+// Check copilot-api on startup (non-blocking)
+brain.checkOllama().catch(() => {});
+
 // ─── Express ──────────────────────────────────────────────────────────────────
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'src')));
 
-// ── Status ──────────────────────────────────────────────────────────────────
+// ── Self-learn (optional module) ──────────────────────────────────────────────
+let selfLearn;
+try { selfLearn = require('./src/self-learn'); } catch { selfLearn = null; }
+
+// ── Status ────────────────────────────────────────────────────────────────────
 app.get('/api/status', async (req, res) => {
   const brainConfig = brain.getConfig();
   res.json({
     brain: {
       available: brainConfig.available,
       model: brainConfig.model,
-      models: brainConfig.models || [],
+      models: brainConfig.models || brain.KNOWN_MODELS,
+      provider: 'copilot',
+      baseUrl: brainConfig.baseUrl,
     },
     telegram: telegram.getStatus(),
     memorySize: memory.getHistory().length,
@@ -58,7 +70,20 @@ app.get('/api/status', async (req, res) => {
   });
 });
 
-// ── Agents ──────────────────────────────────────────────────────────────────
+// ── Copilot check ─────────────────────────────────────────────────────────────
+app.post('/api/brain/check', async (req, res) => {
+  const ok = await brain.checkOllama();
+  res.json({ available: ok, ...brain.getConfig() });
+});
+
+app.post('/api/brain/model', (req, res) => {
+  const { model } = req.body;
+  if (!model) return res.status(400).json({ error: 'model required' });
+  brain.setModel(model);
+  res.json({ ok: true, model });
+});
+
+// ── Agents ────────────────────────────────────────────────────────────────────
 app.get('/api/agents', (req, res) => res.json(agents.getAll()));
 
 app.post('/api/agents', (req, res) => {
@@ -78,7 +103,48 @@ app.delete('/api/agents/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Memory ───────────────────────────────────────────────────────────────────
+// Agent skills management
+app.get('/api/agents/:id/skills', (req, res) => {
+  const agent = agents.getById(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  res.json({ skills: agent.skills || [] });
+});
+
+app.put('/api/agents/:id/skills', (req, res) => {
+  const { skills } = req.body;
+  if (!Array.isArray(skills)) return res.status(400).json({ error: 'skills must be array' });
+  const agent = agents.update(req.params.id, { skills });
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, skills: agent.skills });
+});
+
+// Agent context notes management
+app.get('/api/agents/:id/context', (req, res) => {
+  const agent = agents.getById(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  res.json({
+    contextNotes: agent.contextNotes || '',
+    autoUpdateContext: agent.autoUpdateContext || false,
+  });
+});
+
+app.put('/api/agents/:id/context', (req, res) => {
+  const { contextNotes, autoUpdateContext } = req.body;
+  const data = {};
+  if (contextNotes !== undefined) data.contextNotes = contextNotes;
+  if (autoUpdateContext !== undefined) data.autoUpdateContext = !!autoUpdateContext;
+  const agent = agents.update(req.params.id, data);
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, contextNotes: agent.contextNotes, autoUpdateContext: agent.autoUpdateContext });
+});
+
+app.delete('/api/agents/:id/context', (req, res) => {
+  const agent = agents.update(req.params.id, { contextNotes: '' });
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true, message: 'Context notes cleared' });
+});
+
+// ── Memory ────────────────────────────────────────────────────────────────────
 app.get('/api/memory', (req, res) => {
   const { agentId, limit } = req.query;
   res.json(memory.getHistory(agentId || null, parseInt(limit) || 100));
@@ -94,42 +160,40 @@ app.post('/api/memory/summarize', async (req, res) => {
   res.json({ summary });
 });
 
-// ── Tools ────────────────────────────────────────────────────────────────────
+// ── Tools ─────────────────────────────────────────────────────────────────────
 const brainTools = require('./src/tools');
 app.get('/api/tools', (req, res) => {
   res.json({
     tools: brainTools.TOOL_DEFINITIONS.map(t => ({
       name: t.function.name,
       description: t.function.description,
+      parameters: t.function.parameters,
     })),
     count: brainTools.TOOL_DEFINITIONS.length,
   });
 });
 
 // ── Self-learn ────────────────────────────────────────────────────────────────
-const selfLearn = require('./src/self-learn');
 app.get('/api/lessons', (req, res) => {
+  if (!selfLearn) return res.json({ lessons: [], count: 0 });
   res.json({ lessons: selfLearn.getLessons(), count: selfLearn.getLessonCount() });
 });
 app.delete('/api/lessons', (req, res) => {
-  // Reset lessons
-  const fs = require('fs'), path = require('path');
-  const f = path.join(__dirname, 'data/lessons.json');
+  const f = path.join(DATA_DIR, 'lessons.json');
   try { fs.writeFileSync(f, '[]'); } catch { }
   res.json({ ok: true });
 });
 
-// ── Logs ─────────────────────────────────────────────────────────────────────
+// ── Logs ──────────────────────────────────────────────────────────────────────
 app.get('/api/logs', (req, res) => {
   res.json(logger.getLogs(parseInt(req.query.limit) || 200, req.query.level || null));
 });
-
 app.delete('/api/logs', (req, res) => {
   logger.clearLogs();
   res.json({ ok: true });
 });
 
-// ── Telegram ─────────────────────────────────────────────────────────────────
+// ── Telegram ──────────────────────────────────────────────────────────────────
 app.get('/api/telegram', (req, res) => res.json(telegram.getStatus()));
 app.get('/api/telegram/messages', (req, res) => res.json(telegram.getMessages()));
 
@@ -143,7 +207,6 @@ app.post('/api/telegram/connect', async (req, res) => {
     res.status(400).json({ error: e.message });
   }
 });
-
 
 app.post('/api/telegram/owner', (req, res) => {
   const { chatId } = req.body;
@@ -162,15 +225,10 @@ app.post('/api/telegram/send', async (req, res) => {
     res.status(400).json({ error: e.message });
   }
 });
+
 app.post('/api/telegram/disconnect', async (req, res) => {
   await telegram.disconnect();
   res.json({ ok: true });
-});
-
-// ── Brain check ──────────────────────────────────────────────────────────────
-app.post('/api/brain/check', async (req, res) => {
-  const ok = await brain.checkOllama();
-  res.json({ available: ok, ...brain.getConfig() });
 });
 
 // ─── HTTP + WebSocket Server ──────────────────────────────────────────────────
@@ -181,7 +239,6 @@ wss.on('connection', (ws) => {
   logger.registerClient(ws);
   telegram.registerClient(ws);
 
-  // Send initial status
   ws.send(JSON.stringify({ type: 'connected', message: 'Brain OS WebSocket ready' }));
 
   ws.on('message', async (raw) => {
@@ -192,32 +249,43 @@ wss.on('connection', (ws) => {
       const { content, agentId = 'brain', requestId } = msg;
       if (!content?.trim()) return;
 
-      logger.info(agentId === 'brain' ? 'brain' : `agent:${agentId}`, `User: ${content.slice(0, 80)}`);
+      logger.info(agentId === 'brain' ? 'brain' : `agent:${agentId}`, `→ ${content.slice(0, 80)}`);
 
       const sendToken = (token) => {
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ type: 'chat_token', token, requestId }));
+        ws.send(JSON.stringify({ type: 'chat_token', token, requestId }));
       };
-
-      const sendDone = (full, stats) => {
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ type: 'chat_done', content: full, stats, requestId }));
+      const sendDone = (fullContent, stats) => {
+        ws.send(JSON.stringify({ type: 'chat_done', requestId, stats }));
       };
-
-      const sendError = (e) => {
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ type: 'chat_error', error: e.message, requestId }));
+      const sendError = (err) => {
+        ws.send(JSON.stringify({ type: 'chat_error', error: err.message, requestId }));
       };
-
-      const sendToolCall = (toolName, toolArgs) => {
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ type: 'tool_call', tool: toolName, args: toolArgs, requestId }));
+      const sendToolCall = (info) => {
+        ws.send(JSON.stringify({ type: 'tool_call', ...info, requestId }));
       };
 
       if (agentId === 'brain') {
-        await brain.chat({ userInput: content, agentId: 'brain', onToken: sendToken, onDone: sendDone, onError: sendError, onToolCall: sendToolCall });
+        await brain.chat({
+          userInput: content,
+          agentId: 'brain',
+          onToken: sendToken,
+          onDone: sendDone,
+          onError: sendError,
+          onToolCall: sendToolCall,
+        });
       } else {
-        await agents.runAgent({ agentId, userInput: content, onToken: sendToken, onDone: sendDone, onError: sendError });
+        const agent = agents.getById(agentId);
+        if (!agent) {
+          sendError(new Error(`Agent '${agentId}' not found`));
+          return;
+        }
+        await agents.runAgent({
+          agentId,
+          userInput: content,
+          onToken: sendToken,
+          onDone: sendDone,
+          onError: sendError,
+        });
       }
     }
 
@@ -226,52 +294,21 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({ type: 'chat_cleared' }));
     }
 
-    if (msg.type === 'ping') {
-      ws.send(JSON.stringify({ type: 'pong' }));
+    if (msg.type === 'load_history') {
+      const history = memory.getHistory(msg.agentId || null, msg.limit || 30);
+      ws.send(JSON.stringify({ type: 'history', messages: history }));
     }
   });
 
   ws.on('close', () => {
     logger.removeClient(ws);
-    telegram.removeClient(ws);
   });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-server.listen(PORT, async () => {
-  const c = {
-    reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
-    purple: '\x1b[35m', cyan: '\x1b[36m', green: '\x1b[32m',
-    yellow: '\x1b[33m', red: '\x1b[31m', gray: '\x1b[90m',
-  };
-
-  console.log('');
-  console.log(`${c.purple}${c.bold}  ╔══════════════════════════════════════════╗`);
-  console.log(`  ║        🧠  BRAIN OS  v1.0.0              ║`);
-  console.log(`  ║   Autonomous AI Orchestration System     ║`);
-  console.log(`  ╚══════════════════════════════════════════╝${c.reset}`);
-  console.log('');
-
-  const groqOk = await brain.init();
-  const agentList = agents.getAll();
-  const tgStatus = telegram.getStatus();
-
-  console.log(`  ${groqOk ? c.green + '✓' : c.red + '✗'} Brain:    Groq / ${MODEL}${groqOk ? '' : ' (check GROQ_API_KEY)'}${c.reset}`);
-  console.log(`  ${c.green}✓${c.reset} Memory:   Context store initialized`);
-  console.log(`  ${c.green}✓${c.reset} Agents:   ${agentList.length} agent(s) loaded`);
-  console.log(`  ${c.green}✓${c.reset} Tools:    ${require('./src/tools').TOOL_DEFINITIONS.length} tools available`);
-  console.log(`  ${c.green}✓${c.reset} Learn:    Self-learning active (${require('./src/self-learn').getLessonCount()} lessons)`);
-  console.log(`  ${tgStatus.connected ? c.green + '✓' : c.yellow + '○'} Telegram: ${tgStatus.connected ? '@' + tgStatus.username : 'Not configured'}${c.reset}`);
-  console.log('');
-  console.log(`  ${c.bold}→ Web UI:   ${c.cyan}http://localhost:${PORT}${c.reset}`);
-  console.log(`  ${c.dim}  Press Ctrl+C to stop${c.reset}`);
-  console.log('');
-
-  logger.info('system', `Server started on port ${PORT}`);
-});
-
-// ─── Graceful shutdown ────────────────────────────────────────────────────────
-process.on('SIGINT', () => {
-  console.log('\n\n  👋  Shutting down Brain OS...\n');
-  telegram.disconnect().finally(() => process.exit(0));
+server.listen(PORT, () => {
+  logger.info('system', `Brain OS running on http://localhost:${PORT}`);
+  logger.info('system', `Provider: GitHub Copilot via copilot-api (${brain.getConfig().baseUrl})`);
+  logger.info('system', `Brain model: ${MODEL}`);
+  logger.info('system', `Run 'npx copilot-api@latest start' if not already running`);
 });

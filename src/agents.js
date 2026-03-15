@@ -1,10 +1,17 @@
 /**
- * Agents — Manage specialized AI agents
+ * agents.js — Manage specialized AI agents
  *
  * Each agent has:
- *   id, name, description, model, provider, systemPrompt, apiKey?, active
+ *   id, name, description, model, provider, systemPrompt
+ *   apiKey?, apiKeyVar?, active
+ *   skills[]        ← danh sách skill/instruction riêng của agent
+ *   contextNotes    ← notes/context tích lũy qua các lần dùng
+ *   autoUpdateContext ← tự động cập nhật contextNotes sau mỗi reply
  *
- * Providers: ollama | claude | gemini | openrouter | openai
+ * Providers: ollama | claude | gemini | openrouter | openai | copilot
+ *
+ * Copilot provider: gọi copilot-api local proxy tại http://localhost:4141
+ *   Không cần API key — dùng chung auth của copilot-api
  */
 
 const fs = require('fs');
@@ -23,10 +30,16 @@ const DEFAULT_AGENTS = [
     id: 'dev-agent',
     name: 'Dev Agent',
     description: 'Specialized in coding, debugging, architecture, and technical tasks',
-    provider: 'claude',
-    model: 'claude-opus-4-5',
+    provider: 'copilot',
+    model: 'gpt-4.1',
     systemPrompt: 'You are an expert software engineer. Help with code, debugging, architecture decisions, and technical explanations. Be precise and provide working examples.',
-    apiKeyVar: 'ANTHROPIC_API_KEY',
+    skills: [
+      'Luôn cung cấp code examples đầy đủ, có thể chạy được',
+      'Giải thích ngắn gọn trước khi code',
+      'Ưu tiên Node.js/JavaScript trừ khi yêu cầu ngôn ngữ khác',
+    ],
+    contextNotes: '',
+    autoUpdateContext: true,
     active: true,
     createdAt: Date.now(),
   },
@@ -37,10 +50,13 @@ const DEFAULT_AGENTS = [
     provider: 'gemini',
     model: 'gemini-2.0-flash',
     systemPrompt: 'You are a research assistant. Help find information, summarize topics, and provide well-sourced answers. Prioritize accuracy and recency.',
+    skills: [],
+    contextNotes: '',
+    autoUpdateContext: false,
     apiKeyVar: 'GEMINI_API_KEY',
     active: true,
     createdAt: Date.now(),
-  }
+  },
 ];
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
@@ -49,6 +65,13 @@ function load() {
   try {
     if (fs.existsSync(AGENTS_FILE)) {
       agents = JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8'));
+      // Migrate old agents: thêm fields mới nếu chưa có
+      agents = agents.map(a => ({
+        skills: [],
+        contextNotes: '',
+        autoUpdateContext: false,
+        ...a,
+      }));
     } else {
       agents = DEFAULT_AGENTS;
       save();
@@ -66,7 +89,6 @@ function save() {
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 function getAll() { return agents; }
-
 function getById(id) { return agents.find(a => a.id === id); }
 
 function create(data) {
@@ -74,10 +96,14 @@ function create(data) {
     id: data.id || data.name.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now().toString(36),
     name: data.name,
     description: data.description || '',
-    provider: data.provider || 'claude',
-    model: data.model || 'claude-opus-4-5',
+    provider: data.provider || 'copilot',
+    model: data.model || 'gpt-5-mini',
     systemPrompt: data.systemPrompt || 'You are a helpful assistant.',
+    apiKey: data.apiKey || '',
     apiKeyVar: data.apiKeyVar || '',
+    skills: Array.isArray(data.skills) ? data.skills : [],
+    contextNotes: data.contextNotes || '',
+    autoUpdateContext: data.autoUpdateContext !== undefined ? !!data.autoUpdateContext : false,
     active: true,
     createdAt: Date.now(),
   };
@@ -103,7 +129,87 @@ function remove(id) {
   return true;
 }
 
-// ─── External API call dispatchers ────────────────────────────────────────────
+// ─── Update context notes after agent response ────────────────────────────────
+
+function updateContextNotes(agentId, summary) {
+  const agent = getById(agentId);
+  if (!agent || !agent.autoUpdateContext) return;
+
+  const maxLen = 2000;
+  const existing = agent.contextNotes || '';
+  const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const newNote = `[${timestamp}] ${summary.slice(0, 300)}`;
+
+  const updated = (existing + '\n' + newNote).trim();
+  agent.contextNotes = updated.length > maxLen
+    ? '...(trimmed)\n' + updated.slice(-maxLen)
+    : updated;
+
+  update(agentId, { contextNotes: agent.contextNotes });
+}
+
+// ─── Resolve API key ──────────────────────────────────────────────────────────
+
+function resolveApiKey(agent, defaultEnvVar) {
+  if (agent.apiKey && agent.apiKey.length > 8) return agent.apiKey;
+  if (agent.apiKeyVar) {
+    const val = process.env[agent.apiKeyVar];
+    if (val) return val;
+  }
+  return process.env[defaultEnvVar] || null;
+}
+
+// ─── Provider: GitHub Copilot (via copilot-api local proxy) ──────────────────
+
+async function callCopilot({ model, messages, onToken, onDone, onError }) {
+  const COPILOT_BASE = process.env.COPILOT_API_URL || 'http://localhost:4141';
+  const url = `${COPILOT_BASE}/v1/chat/completions`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: model || 'gpt-5-mini',
+        messages,
+        stream: true,
+        max_tokens: 4096,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      onError(new Error(`copilot-api: ${res.status} ${err}`));
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value);
+      const lines = text.split('\n').filter(l => l.startsWith('data: ') && !l.includes('[DONE]'));
+
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          const token = data.choices?.[0]?.delta?.content || '';
+          if (token) { fullContent += token; onToken(token); }
+          if (data.choices?.[0]?.finish_reason === 'stop') onDone(fullContent);
+        } catch { }
+      }
+    }
+
+    if (fullContent) onDone(fullContent);
+  } catch (e) {
+    onError(e);
+  }
+}
+
+// ─── Provider: Anthropic Claude ───────────────────────────────────────────────
 
 async function callClaude({ model, messages, apiKey, onToken, onDone, onError }) {
   const key = apiKey || process.env.ANTHROPIC_API_KEY;
@@ -119,15 +225,15 @@ async function callClaude({ model, messages, apiKey, onToken, onDone, onError })
         'Content-Type': 'application/json',
         'x-api-key': key,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'messages-2023-12-15'
+        'anthropic-beta': 'messages-2023-12-15',
       },
       body: JSON.stringify({
-        model: model || 'claude-opus-4-5',
-        max_tokens: 2048,
+        model: model || 'claude-sonnet-4-5',
+        max_tokens: 4096,
         system: systemMsg?.content || '',
         messages: chatMsgs,
         stream: true,
-      })
+      }),
     });
 
     if (!res.ok) { onError(new Error(`Claude API: ${res.status}`)); return; }
@@ -150,38 +256,38 @@ async function callClaude({ model, messages, apiKey, onToken, onDone, onError })
             fullContent += token;
             onToken(token);
           }
-          if (data.type === 'message_stop') {
-            onDone(fullContent);
-          }
-        } catch {}
+          if (data.type === 'message_stop') onDone(fullContent);
+        } catch { }
       }
     }
-  } catch (e) {
-    onError(e);
-  }
+  } catch (e) { onError(e); }
 }
+
+// ─── Provider: Google Gemini ──────────────────────────────────────────────────
 
 async function callGemini({ model, messages, apiKey, onToken, onDone, onError }) {
   const key = apiKey || process.env.GEMINI_API_KEY;
   if (!key) { onError(new Error('GEMINI_API_KEY not set')); return; }
 
+  const useModel = model || 'gemini-2.0-flash';
   const systemMsg = messages.find(m => m.role === 'system')?.content || '';
   const chatMsgs = messages
     .filter(m => m.role !== 'system')
     .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:streamGenerateContent?alt=sse&key=${key}`;
-
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: systemMsg ? { parts: [{ text: systemMsg }] } : undefined,
-        contents: chatMsgs,
-        generationConfig: { maxOutputTokens: 2048 }
-      })
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${useModel}:streamGenerateContent?alt=sse&key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: systemMsg ? { parts: [{ text: systemMsg }] } : undefined,
+          contents: chatMsgs,
+          generationConfig: { maxOutputTokens: 4096 },
+        }),
+      }
+    );
 
     if (!res.ok) { onError(new Error(`Gemini API: ${res.status}`)); return; }
 
@@ -201,53 +307,31 @@ async function callGemini({ model, messages, apiKey, onToken, onDone, onError })
           const token = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (token) { fullContent += token; onToken(token); }
           if (data.candidates?.[0]?.finishReason) onDone(fullContent);
-        } catch {}
+        } catch { }
       }
     }
-  } catch (e) {
-    onError(e);
-  }
+  } catch (e) { onError(e); }
 }
 
-// ─── OpenRouter auto model selection ──────────────────────────────────────────
-// Khi model = 'auto', chọn model dựa trên context của request
+// ─── Provider: OpenRouter ─────────────────────────────────────────────────────
 
-const OR_AUTO_MODELS = {
-  // Tasks → model phù hợp (theo cost/performance)
-  code:    'anthropic/claude-opus-4-5',        // code, debug
-  long:    'google/gemini-2.0-flash-001',      // long context, documents
-  fast:    'openai/gpt-4o-mini',               // short, general
-  reason:  'deepseek/deepseek-r1',             // reasoning, math, logic
-  vision:  'openai/gpt-4o',                   // images
-  default: 'openai/gpt-4o-mini',              // fallback
-};
-
-const CODE_KEYWORDS = ['code','function','bug','error','debug','npm','node','python','script','api','implement','refactor','class','array','loop','async'];
-const REASON_KEYWORDS = ['calculate','math','formula','logic','reason','step by step','prove','analyze','compare','explain why','tại sao','phân tích','tính toán'];
-const LONG_KEYWORDS = ['summarize','summary','document','file','translate','dịch','tóm tắt','toàn bộ','entire'];
+const OR_FREE_MODELS = [
+  'google/gemini-2.0-flash-exp:free', 'meta-llama/llama-3.1-8b-instruct:free',
+  'mistralai/mistral-7b-instruct:free',
+];
 
 function selectAutoModel(messages) {
-  // Gộp text của 3 message gần nhất để phân tích intent
-  const recentText = messages
-    .slice(-3)
-    .map(m => (m.content || '').toLowerCase())
-    .join(' ');
-
-  if (CODE_KEYWORDS.some(k => recentText.includes(k))) return OR_AUTO_MODELS.code;
-  if (REASON_KEYWORDS.some(k => recentText.includes(k))) return OR_AUTO_MODELS.reason;
-  if (LONG_KEYWORDS.some(k => recentText.includes(k))) return OR_AUTO_MODELS.long;
-  if (recentText.length > 2000) return OR_AUTO_MODELS.long;
-  return OR_AUTO_MODELS.default;
+  const totalLen = messages.reduce((a, m) => a + (m.content?.length || 0), 0);
+  if (totalLen > 8000) return 'google/gemini-flash-1.5';
+  return OR_FREE_MODELS[0];
 }
 
 async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onError, onModelSelected }) {
-  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  const key = resolveApiKey({ apiKey }, 'OPENROUTER_API_KEY');
   if (!key) { onError(new Error('OPENROUTER_API_KEY not set')); return; }
 
-  // Auto model: chọn dựa trên context
-  const selectedModel = (!model || model === 'auto') ? selectAutoModel(messages) : model;
+  const selectedModel = model === 'auto' ? selectAutoModel(messages) : model;
   if (onModelSelected) onModelSelected(selectedModel);
-  logger.debug('agents', `OpenRouter model: ${selectedModel}${model === 'auto' ? ' (auto-selected)' : ''}`);
 
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -256,9 +340,9 @@ async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onErro
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${key}`,
         'HTTP-Referer': 'http://localhost:3333',
-        'X-Title': 'Brain OS'
+        'X-Title': 'Brain OS',
       },
-      body: JSON.stringify({ model: selectedModel, messages, stream: true, max_tokens: 2048 })
+      body: JSON.stringify({ model: selectedModel, messages, stream: true, max_tokens: 4096 }),
     });
 
     if (!res.ok) { onError(new Error(`OpenRouter: ${res.status}`)); return; }
@@ -279,65 +363,124 @@ async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onErro
           const token = data.choices?.[0]?.delta?.content || '';
           if (token) { fullContent += token; onToken(token); }
           if (data.choices?.[0]?.finish_reason) onDone(fullContent);
-        } catch {}
+        } catch { }
       }
     }
-  } catch (e) {
-    onError(e);
-  }
+  } catch (e) { onError(e); }
 }
 
-// ─── Resolve API key: direct value first, then env var by name, then default env ─
+// ─── Provider: OpenAI ─────────────────────────────────────────────────────────
 
-function resolveApiKey(agent, defaultEnvVar) {
-  // 1. Direct key stored in agent config (user typed it in UI)
-  if (agent.apiKey && agent.apiKey.length > 8) return agent.apiKey;
-  // 2. Env var name stored in apiKeyVar field
-  if (agent.apiKeyVar) {
-    const val = process.env[agent.apiKeyVar];
-    if (val) return val;
-  }
-  // 3. Default env var for provider
-  return process.env[defaultEnvVar] || null;
+async function callOpenAI({ model, messages, apiKey, onToken, onDone, onError }) {
+  const key = apiKey || process.env.OPENAI_API_KEY;
+  if (!key) { onError(new Error('OPENAI_API_KEY not set')); return; }
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({ model: model || 'gpt-4o', messages, stream: true, max_tokens: 4096 }),
+    });
+
+    if (!res.ok) { onError(new Error(`OpenAI: ${res.status}`)); return; }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value);
+      const lines = text.split('\n').filter(l => l.startsWith('data: ') && !l.includes('[DONE]'));
+
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          const token = data.choices?.[0]?.delta?.content || '';
+          if (token) { fullContent += token; onToken(token); }
+          if (data.choices?.[0]?.finish_reason === 'stop') onDone(fullContent);
+        } catch { }
+      }
+    }
+  } catch (e) { onError(e); }
 }
 
-// ─── Dispatch to correct provider ─────────────────────────────────────────────
+// ─── Run agent ────────────────────────────────────────────────────────────────
 
 async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
   const agent = getById(agentId);
   if (!agent) { onError(new Error(`Agent not found: ${agentId}`)); return; }
 
+  // Build system prompt: base + skills + context notes
+  let fullSystemPrompt = agent.systemPrompt || 'You are a helpful assistant.';
+
+  if (agent.skills && agent.skills.length > 0) {
+    fullSystemPrompt += '\n\n## Skills & Instructions\n' +
+      agent.skills.map((s, i) => `${i + 1}. ${s}`).join('\n');
+  }
+
+  if (agent.contextNotes && agent.contextNotes.trim()) {
+    fullSystemPrompt += '\n\n## Context Notes (accumulated knowledge)\n' + agent.contextNotes;
+  }
+
+  // Assemble context from memory (per-agent history)
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
     agentId,
-    systemPrompt: agent.systemPrompt,
-    tokenBudget: 2500,
+    systemPrompt: fullSystemPrompt,
+    tokenBudget: 3000,
   });
 
   const messages = [
     { role: 'system', content: assembled.systemPrompt },
     ...assembled.context,
-    { role: 'user', content: userInput }
+    { role: 'user', content: userInput },
   ];
 
-  logger.info(`agent:${agent.name}`, `Running. Context: ${assembled.stats.selectedMessages} msgs, ~${assembled.stats.estimatedTokens} tokens`);
+  logger.info(`agent:${agent.name}`, `Running. Context: ${assembled.stats.selectedMessages} msgs`);
+
+  // Store user input in this agent's memory
   memory.store('user', userInput, agentId);
 
   const wrappedDone = (content) => {
+    // Store response in agent's memory
     memory.store('assistant', content, agentId);
+
+    // Auto-update context notes if enabled
+    if (agent.autoUpdateContext && content.length > 50) {
+      const summary = `Q: ${userInput.slice(0, 100)} → A: ${content.slice(0, 200)}`;
+      updateContextNotes(agentId, summary);
+    }
+
     onDone(content, assembled.stats);
   };
 
-  // Resolve API key với fallback chain
+  // Dispatch to provider
   const defaultEnvVars = {
     claude: 'ANTHROPIC_API_KEY',
     gemini: 'GEMINI_API_KEY',
     openrouter: 'OPENROUTER_API_KEY',
     openai: 'OPENAI_API_KEY',
+    copilot: null, // no key needed
   };
-  const apiKey = resolveApiKey(agent, defaultEnvVars[agent.provider] || '');
 
-  const dispatch = { claude: callClaude, gemini: callGemini, openrouter: callOpenRouter };
+  const apiKey = defaultEnvVars[agent.provider] !== null
+    ? resolveApiKey(agent, defaultEnvVars[agent.provider] || '')
+    : null;
+
+  const dispatch = {
+    claude: callClaude,
+    gemini: callGemini,
+    openrouter: callOpenRouter,
+    openai: callOpenAI,
+    copilot: callCopilot,
+    ollama: async (opts) => {
+      // Fallback: use brain's copilot
+      await callCopilot({ ...opts });
+    },
+  };
+
   const fn = dispatch[agent.provider];
   if (!fn) { onError(new Error(`Unknown provider: ${agent.provider}`)); return; }
 
@@ -348,4 +491,13 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
   await fn({ model: agent.model, messages, apiKey, onToken, onDone: wrappedDone, onError, onModelSelected });
 }
 
-module.exports = { init: load, getAll, getById, create, update, remove, runAgent };
+module.exports = {
+  init: load,
+  getAll,
+  getById,
+  create,
+  update,
+  remove,
+  runAgent,
+  updateContextNotes,
+};

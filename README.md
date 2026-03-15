@@ -1,111 +1,207 @@
 # 🧠 Brain OS
 
-Autonomous AI orchestration system with local brain, multi-agent routing, Telegram integration, and intelligent context management.
+**Local AI Orchestration System** — chạy hoàn toàn trên máy của bạn.
 
-## Architecture
+Orchestrator: **GitHub Copilot** (qua `copilot-api`) — không cần Ollama, không cần Groq API key riêng.
 
-```
-User Input
-    ↓
-Brain / Orchestrator  ←──── Ollama (local, qwen2.5:3b)
-    ↓           ↑
-Context Store      Memory.js (score + filter context)
-(data/memory.json)
-    ↓
-Prompt Assembler   → [system prompt + selected context + input]
-    ↓
-External AI APIs   → Claude / Gemini / OpenRouter
-    ↑
-Response → stored in memory → sent back to user
-```
+---
 
-## Requirements
+## Tính năng
 
-- Node.js >= 18
-- Ollama (for local brain): https://ollama.com
-- (Optional) API keys for Claude, Gemini, etc.
+- 🤖 **Copilot Orchestrator** — dùng Copilot Pro subscription (free models sẵn có)
+- 🔧 **14 Tool Calling** — file I/O, HTTP request, web search, shell, Telegram...
+- 🧠 **Smart Memory** — context filtering theo score (recency + keyword + role)
+- 👥 **Flexible Agents** — mỗi agent có skills + context notes riêng
+- 📱 **Telegram Bot** — điều khiển từ xa
+- 🌐 **Web UI** — Chat, Agents, Telegram, Logs tabs tại port 3333
+
+---
 
 ## Setup
 
+### 1. Clone & cài dependencies
+
 ```bash
-# 1. Install dependencies
+git clone <repo>
+cd brain-os
 npm install
-
-# 2. Start Ollama and pull a brain model
-ollama pull qwen2.5:3b   # fast, fits 8GB RAM
-# or: ollama pull llama3.2:3b
-
-# 3. Start Brain OS
-node server.js
-
-# Custom port and model:
-node server.js --port 8080 --model llama3.2:3b
 ```
 
-Open: http://localhost:3333
-
-## API Keys (for agents)
-
-Set environment variables before starting:
+### 2. Setup GitHub Copilot proxy (bắt buộc)
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-export GEMINI_API_KEY=AIza...
-export OPENROUTER_API_KEY=sk-or-...
+# Cài copilot-api
+npm install -g copilot-api
 
+# Đăng nhập GitHub (chỉ làm 1 lần)
+copilot-api auth
+# → Mở URL hiện ra, nhập device code, xác nhận
+
+# Chạy proxy (giữ terminal này mở)
+copilot-api start
+# → Listening at http://localhost:4141
+```
+
+### 3. Khởi động Brain OS
+
+```bash
+# Seed context ban đầu
+node seed-context.js
+
+# Chạy server
 node server.js
+
+# Hoặc với model khác
+node server.js --port 3333 --model gpt-4.1
 ```
 
-## Extending
+### 4. Mở Web UI
 
-### Add a new agent
+Truy cập http://localhost:3333
 
-In the web UI → Agents tab → New Agent.
+---
 
-### Add local tools (cli-anything)
+## Models GitHub Copilot Pro
 
-In `src/brain.js`, extend the `chat()` function to detect tool-use intents
-and execute local commands before/after calling the LLM.
+| Model | Quota | Dùng khi |
+|-------|-------|---------|
+| `gpt-4.1-mini` | ✅ Free | Mặc định, tất cả tasks |
+| `gpt-4o-mini` | ✅ Free | Backup nhanh |
+| `gemini-2.0-flash` | ✅ Free | Google model |
+| `gpt-4.1` | x1 premium | Tasks phức tạp |
+| `gpt-4o` | x1 premium | Balanced |
+| `claude-sonnet-4.5` | x1 premium | Code/analysis |
+| `claude-haiku-3.5` | x1 premium | Claude nhanh |
+| `o1-mini` | x3 premium | Reasoning |
+| `o3-mini` | x3 premium | Reasoning mạnh |
 
-### Add more providers
+**Đổi model Brain:** `node server.js --model gpt-4.1`
 
-In `src/agents.js`, add a new `callXxx()` function following the same pattern
-(model, messages, apiKey, onToken, onDone, onError).
+---
 
-## Context Management (Prompt Assembler)
+## Agents
 
-Every request goes through `memory.assemblePrompt()` which:
+Mỗi agent có thể cấu hình:
+- **Provider**: copilot | claude | gemini | openrouter | openai
+- **Model**: tên model của provider đó
+- **System Prompt**: prompt chính
+- **Skills**: danh sách instructions cụ thể
+- **Context Notes**: ghi chú tích lũy (auto-update sau mỗi reply)
+- **Auto Update Context**: bật để agent tự học preference
 
-1. Extracts keywords from the current input
-2. Scores ALL stored messages: `0.5 × recency + 0.4 × keyword_overlap + 0.1 × role_bonus`
-3. Picks top messages within a **3000 token budget**
-4. Re-sorts selected messages by timestamp before sending
+### Default Agents
 
-This means: even very long conversations stay within limits, and the most
-relevant context is always included regardless of how old it is.
+| Agent | Provider | Model | Dùng cho |
+|-------|----------|-------|---------|
+| Dev Agent | copilot | gpt-4.1 | Code, debug, architecture |
+| Search Agent | gemini | gemini-2.0-flash | Research, tìm kiếm |
 
-## Local Brain Intelligence
+---
 
-| Task             | Can do? | Notes                                               |
-| ---------------- | ------- | --------------------------------------------------- |
-| General chat     | ✅      | qwen2.5:3b handles well                             |
-| Context routing  | ✅      | Main job of the brain                               |
-| Code generation  | ⚠️      | Basic only; use Dev Agent (Claude) for complex code |
-| Summarization    | ✅      | Compresses old history periodically                 |
-| Self-improvement | ⚠️      | Via prompt evolution (see below)                    |
+## Tools (14)
 
-**Self-improvement (behavioral, not weight-based):**
-The brain can analyze its own error logs and update its system prompt dynamically.
-This is _behavioral_ learning — the model weights don't change, but its instructions evolve.
-True weight-based fine-tuning requires a training pipeline (future feature).
+| Tool | Mô tả |
+|------|-------|
+| `get_current_time` | Thời gian VN |
+| `list_agents` | Liệt kê agents |
+| `get_system_status` | System info |
+| `call_agent` | Gọi agent chuyên biệt |
+| `manage_agent` | Bật/tắt agent |
+| `get_memory_stats` | Memory stats |
+| `run_command` | Shell (read-only whitelist) |
+| `run_pipeline` | Parallel/sequential agents |
+| `save_lesson` | Self-learn |
+| `send_telegram` | Gửi Telegram |
+| `read_file` | Đọc file local |
+| `write_file` | Ghi file local |
+| `http_request` | HTTP GET/POST |
+| `search_web` | DuckDuckGo search |
 
-## Data Files
+---
+
+## API Endpoints
 
 ```
-data/
-  agents.json     # Agent configurations
-  memory.json     # Conversation history (last 500 messages)
-  summaries.json  # Compressed summaries of old context
-  logs.json       # Recent logs (last 1000 entries)
-  config.json     # System config (telegram token, etc.)
+GET  /api/status               — status tổng quan
+POST /api/brain/check          — kiểm tra copilot-api
+POST /api/brain/model          — đổi brain model
+GET  /api/agents               — danh sách agents
+POST /api/agents               — tạo agent mới
+PUT  /api/agents/:id           — sửa agent
+DELETE /api/agents/:id         — xóa agent
+GET  /api/agents/:id/skills    — xem skills
+PUT  /api/agents/:id/skills    — cập nhật skills
+GET  /api/agents/:id/context   — xem context notes
+PUT  /api/agents/:id/context   — cập nhật context notes
+DELETE /api/agents/:id/context — xóa context notes
+GET  /api/tools                — danh sách tools
+GET  /api/memory               — chat history
+POST /api/memory/summarize     — tóm tắt lịch sử
+GET  /api/lessons              — self-learn lessons
+GET  /api/logs                 — system logs
 ```
+
+---
+
+## Environment Variables (tùy chọn)
+
+```bash
+# Chỉ cần nếu dùng Claude/Gemini/OpenRouter làm agent (không cần cho Copilot)
+ANTHROPIC_API_KEY=...
+GEMINI_API_KEY=...
+OPENROUTER_API_KEY=...
+OPENAI_API_KEY=...
+
+# Tùy chỉnh copilot-api URL (mặc định: http://localhost:4141)
+COPILOT_API_URL=http://localhost:4141
+
+# Port và model
+PORT=3333
+BRAIN_MODEL=gpt-4.1-mini
+```
+
+---
+
+## WebSocket Protocol
+
+```json
+// Client → Server
+{ "type": "chat", "content": "Xin chào", "agentId": "brain", "requestId": "abc" }
+{ "type": "clear_chat", "agentId": "brain" }
+{ "type": "load_history", "agentId": "brain", "limit": 30 }
+
+// Server → Client
+{ "type": "chat_token", "token": "Xin", "requestId": "abc" }
+{ "type": "chat_done", "requestId": "abc", "stats": {...} }
+{ "type": "chat_error", "error": "...", "requestId": "abc" }
+{ "type": "tool_call", "tool": "get_current_time", "args": {}, "requestId": "abc" }
+{ "type": "log", "entry": {...} }
+```
+
+---
+
+## Troubleshooting
+
+**copilot-api không chạy:**
+```
+copilot-api chưa chạy. Hãy chạy: npx copilot-api@latest start
+```
+→ Chạy `copilot-api start` và giữ terminal mở
+
+**Token hết hạn:**
+→ Chạy `copilot-api auth` lại
+
+**Model không có:**
+→ Kiểm tra plan Copilot của bạn tại https://github.com/settings/copilot
+
+---
+
+## Roadmap
+
+- ✅ Phase 1: Core system
+- ✅ Phase 2A: 14 Tool Calling (file I/O, HTTP, search)
+- ✅ Phase 2B: GitHub Copilot orchestrator
+- ✅ Phase 2C: Per-agent skills & context
+- ⬜ Phase 3: Self-improvement
+- ⬜ Phase 4: Content pipeline (video tự động)
+- ⬜ Phase 5: Multi-agent

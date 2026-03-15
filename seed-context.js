@@ -7,9 +7,6 @@
  *
  * Hoặc reset và seed lại:
  *   node seed-context.js --reset
- *
- * Context này được lưu vào data/memory.json với agentId='brain'
- * và sẽ được Prompt Assembler chọn lọc khi liên quan.
  */
 
 const fs = require('fs');
@@ -22,18 +19,12 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const reset = process.argv.includes('--reset');
 
-// ─── Load existing memory ─────────────────────────────────────────────────────
 let memory = [];
 if (!reset && fs.existsSync(MEMORY_FILE)) {
   try { memory = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8')); } catch {}
 }
 
-// Remove old seed entries nếu có
 memory = memory.filter(m => !m._seeded);
-
-// ─── Seed entries ─────────────────────────────────────────────────────────────
-// Format: { role, content, agentId, _seeded: true }
-// Viết dưới dạng Q&A tự nhiên để scoring keyword hoạt động tốt nhất
 
 const now = Date.now();
 const ts = (offsetMinutes) => now - offsetMinutes * 60 * 1000;
@@ -48,19 +39,21 @@ const seeds = [
   },
   {
     role: 'assistant',
-    content: `Brain OS là hệ thống AI orchestration chạy local. Kiến trúc gồm:
-- Brain (Ollama local): bộ não nhỏ, nhanh, làm nhiệm vụ routing + quản lý context
-- Prompt Assembler: lọc context thông minh theo score (recency 50% + keyword 40% + role 10%), giới hạn 3000 tokens
-- Agents: các AI chuyên biệt (Claude cho code, Gemini cho search, OpenRouter cho nhiều model)
-- Memory: lưu toàn bộ lịch sử local, không gửi full context như OpenClaw
-- Telegram: điều khiển từ xa
-- Web UI: port 3333, 4 tab (Chat, Agents, Telegram, Logs)
+    content: `Brain OS là hệ thống AI orchestration chạy local. Kiến trúc:
 
-Mục tiêu chính: tiết kiệm token, không bị giới hạn context window, mở rộng được.`,
+- **Orchestrator**: GitHub Copilot qua copilot-api (http://localhost:4141) — thay Groq/Ollama
+- **Prompt Assembler**: lọc context thông minh (recency 50% + keyword 40% + role 10%), budget 4000 tokens
+- **Agents**: AI chuyên biệt với skills + context riêng (Claude, Gemini, OpenRouter, OpenAI, Copilot)
+- **14 Tools**: thời gian, agents, system, CLI, pipeline, file I/O, HTTP request, web search, Telegram
+- **Memory**: lưu toàn bộ lịch sử local theo agentId
+- **Telegram**: điều khiển từ xa
+- **Web UI**: port 3333, 4 tab (Chat, Agents, Telegram, Logs)
+
+Không cần Ollama. Orchestrator dùng Copilot Pro (free models: gpt-4.1-mini, gpt-4o-mini, gemini-2.0-flash).`,
     timestamp: ts(119),
   },
 
-  // ── File structure ─────────────────────────────────────────────────────────
+  // ── File structure ────────────────────────────────────────────────────────
   {
     role: 'user',
     content: 'Cấu trúc file của Brain OS như thế nào?',
@@ -69,180 +62,184 @@ Mục tiêu chính: tiết kiệm token, không bị giới hạn context window
   {
     role: 'assistant',
     content: `brain-os/
-├── server.js          # Entry point: Express + WebSocket, port 3333
-├── seed-context.js    # Script này — inject context ban đầu
-├── package.json       # Dependencies: express, ws, node-telegram-bot-api
+├── server.js          # Express + WebSocket, port 3333
+├── seed-context.js    # Script inject context ban đầu
+├── context.md         # Context file import vào conversation mới
+├── README.md          # Hướng dẫn setup
+├── package.json       # express, ws, node-telegram-bot-api
 ├── src/
-│   ├── brain.js       # Ollama integration: streamChat, chat(), summarizeHistory(), routeToAgent()
-│   ├── memory.js      # Prompt Assembler: store(), assemblePrompt(), clearHistory()
-│   ├── agents.js      # CRUD agents + callClaude/callGemini/callOpenRouter()
-│   ├── logger.js      # Log system: realtime broadcast qua WebSocket
-│   └── telegram.js    # Telegram bot: auto-reconnect, forward đến brain
+│   ├── brain.js       # Copilot orchestrator + Tool Calling loop
+│   ├── tools.js       # 14 tools (file I/O, HTTP, search_web, v.v.)
+│   ├── memory.js      # Prompt Assembler: score + token budget 4000
+│   ├── agents.js      # CRUD agents + 5 providers + skills + context
+│   ├── self-learn.js  # Tự học từ lỗi + corrections
+│   ├── logger.js      # Log broadcast qua WebSocket
+│   └── telegram.js    # Telegram bot polling
 ├── public/
-│   └── index.html     # SPA toàn bộ UI (844 dòng, không có external framework)
+│   └── index.html     # SPA toàn bộ UI
 └── data/              # Tự tạo khi chạy
-    ├── memory.json    # Conversation history (max 500 msgs)
-    ├── agents.json    # Agent configs (có apiKey trực tiếp)
-    ├── summaries.json # Compressed context
-    ├── logs.json      # System logs (max 1000 entries)
+    ├── memory.json    # Conversation history
+    ├── agents.json    # Agent configs (skills, context, provider)
+    ├── lessons.json   # Self-learn lessons
+    ├── logs.json      # System logs
     └── config.json    # Telegram token, settings`,
     timestamp: ts(109),
   },
 
-  // ── Agents config ──────────────────────────────────────────────────────────
+  // ── Copilot provider ──────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Các agents hiện tại được cấu hình như thế nào?',
+    content: 'Brain OS dùng Copilot như thế nào? Setup ra sao?',
     timestamp: ts(100),
   },
   {
     role: 'assistant',
-    content: `Agents hiện tại:
+    content: `Brain OS dùng GitHub Copilot qua copilot-api (open source: ericc-ch/copilot-api).
 
-1. Brain (built-in, không cần config)
-   - Provider: Ollama local
-   - Model: qwen2.5:3b (hoặc llama3.2:3b)
-   - Nhiệm vụ: routing, chat thông thường, summarize
+Setup 1 lần:
+1. \`npx copilot-api@latest auth\` → đăng nhập GitHub (device flow, mở URL)
+2. \`npx copilot-api@latest start\` → giữ chạy tại http://localhost:4141
 
-2. Dev Agent
-   - Provider: Claude (Anthropic) hoặc Gemini
-   - Model: claude-opus-4-5 hoặc gemini-2.0-flash
-   - Dùng khi: code, debug, architecture, technical questions
-   - API key: lưu trực tiếp trong agents.json (field apiKey)
+copilot-api expose OpenAI-compatible API → Brain OS gọi như bình thường.
 
-3. Search Agent
-   - Provider: Gemini
-   - Model: gemini-2.0-flash
-   - Dùng khi: tìm kiếm thông tin, research, tin tức mới
+Models Copilot Pro:
+- FREE (unlimited): gpt-4.1-mini, gpt-4o-mini, gemini-2.0-flash
+- x1 premium: gpt-4.1, gpt-4o, claude-sonnet-4.5, claude-haiku-3.5
+- x3 premium: o1-mini, o3-mini (reasoning models)
 
-4. OpenRouter agent (mới thêm)
-   - Provider: openrouter
-   - Model: openai/gpt-4o-mini (format phải có prefix provider/)
-   - API key: nhập trực tiếp vào UI, không cần env var
-
-Thêm agent mới: UI tab Agents → New Agent.`,
+Brain dùng gpt-4.1-mini mặc định (free, nhanh).
+Đổi model: \`node server.js --model gpt-4.1\` hoặc qua API POST /api/brain/model.`,
     timestamp: ts(99),
   },
 
-  // ── Memory & context system ────────────────────────────────────────────────
+  // ── Agents with skills & context ──────────────────────────────────────────
   {
     role: 'user',
-    content: 'Hệ thống memory và context filtering hoạt động thế nào?',
+    content: 'Tính năng skills và context của agents hoạt động thế nào?',
     timestamp: ts(90),
   },
   {
     role: 'assistant',
-    content: `Prompt Assembler trong memory.js hoạt động theo 3 bước:
+    content: `Mỗi agent trong Brain OS nay có 3 phần system prompt:
 
-1. Score mỗi message trong history:
-   - Recency score (50%): message mới hơn = score cao hơn
-   - Keyword overlap (40%): extract keywords từ input hiện tại, so sánh với content message
-   - Role bonus (10%): user messages ưu tiên nhẹ hơn assistant
+1. systemPrompt: prompt cơ bản (giống cũ)
 
-2. Chọn messages trong token budget (3000 tokens ~ 12000 chars):
-   - Sort by score descending
-   - Pick cho đến khi đủ budget
-   - Luôn giữ 6 messages gần nhất dù score thấp (alwaysIncludeLastN)
+2. skills[]: danh sách instructions riêng, ví dụ:
+   - "Luôn cung cấp code examples đầy đủ"
+   - "Ưu tiên Node.js/JavaScript"
+   Skills được append vào system prompt dưới dạng "## Skills & Instructions"
 
-3. Re-sort by timestamp → gửi cho LLM theo thứ tự tự nhiên
+3. contextNotes: string tích lũy qua thời gian
+   - Nếu autoUpdateContext=true: tự động update sau mỗi reply
+   - Format: "[timestamp] Q: ... → A: ..."
+   - Giúp agent "nhớ" preference và patterns của user
 
-Kết quả: conversation dài vẫn không bị lỗi context window, luôn giữ thông tin liên quan nhất.
-Summarize: gọi /api/memory/summarize để brain tóm tắt 50 message cũ → lưu summaries.json.`,
+Cấu hình agents.json:
+{
+  id, name, provider, model, systemPrompt,
+  skills: ["skill 1", "skill 2"],
+  contextNotes: "...",
+  autoUpdateContext: true
+}
+
+API mới:
+- GET/PUT /api/agents/:id/skills
+- GET/PUT/DELETE /api/agents/:id/context`,
     timestamp: ts(89),
   },
 
-  // ── Known issues & fixes ───────────────────────────────────────────────────
+  // ── Tools ─────────────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Có bug nào đã được fix trong Brain OS không?',
+    content: 'Brain OS có những tools gì mới?',
     timestamp: ts(80),
   },
   {
     role: 'assistant',
-    content: `Các bug đã fix:
+    content: `Brain OS nay có 14 tools (thêm 4 tools mới):
 
-1. AI reply vào đoạn hội thoại cũ (không tạo message mới)
-   - Nguyên nhân: dùng getElementById('current-bubble') tìm nhầm bubble cũ trong DOM
-   - Fix: dùng direct DOM reference (div.querySelector('.msg-bubble'))
+Tools mới:
+11. read_file: Đọc file local (whitelist: project dir, workspace, Documents)
+    - Giới hạn: 512KB, 8000 chars output
+    
+12. write_file: Ghi file local (whitelist paths)
+    - mode: overwrite | append
+    
+13. http_request: HTTP GET/POST tới external API
+    - Headers tùy chỉnh, timeout, auto-parse JSON
+    
+14. search_web: Tìm kiếm web qua DuckDuckGo Instant API
+    - Trả về abstract + related topics
+    - max_results: 1-10
 
-2. API key OpenRouter "not set" dù đã nhập
-   - Nguyên nhân: UI lưu apiKeyVar (tên env var) nhưng runAgent không đọc field đó
-   - Fix: thêm resolveApiKey() với fallback chain: direct value → env var by name → default env
+Tools cũ vẫn còn: get_current_time, list_agents, get_system_status, call_agent,
+manage_agent, get_memory_stats, run_command, run_pipeline, save_lesson, send_telegram.
 
-3. Model name OpenRouter sai format
-   - Sai: GPT-4o-mini
-   - Đúng: openai/gpt-4o-mini (phải có prefix provider/)
-
-4. Lịch sử chat không hiển thị khi refresh
-   - Fix: load từ /api/memory khi WS connect, render 30 message gần nhất
-   - Load more: click button để xem thêm (pagination)`,
+Tool calling dùng OpenAI-compatible format (tool_calls trong response).`,
     timestamp: ts(79),
   },
 
   // ── Goals & roadmap ────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Mục tiêu và roadmap của project này là gì?',
+    content: 'Mục tiêu và roadmap hiện tại của Brain OS?',
     timestamp: ts(70),
   },
   {
     role: 'assistant',
     content: `Mục tiêu của Nam:
-- Xây dựng AI content pipeline tự động 24/7 (faceless YouTube/TikTok + affiliate marketing)
-- Tạo thu nhập phụ từ AI tools trong 1-2 tháng thử nghiệm
-- Setup không tốn chi phí ban đầu (dùng API keys có sẵn)
+- AI content pipeline tự động 24/7 (faceless YouTube/TikTok + affiliate marketing)
+- Không tốn chi phí (dùng Copilot Pro + free tiers)
+- Setup đơn giản, hands-on
 
-Roadmap Brain OS:
-✅ Phase 1 (xong): Core system — chat, memory, agents, telegram, logs, web UI
-⬜ Phase 2: Self-improvement — brain đọc error logs, tự update system prompt
-⬜ Phase 3: CLI tools — brain chạy được lệnh local (cli-anything integration)
-⬜ Phase 4: Content pipeline — kết nối workflow tạo video tự động
-⬜ Phase 5: Multi-agent — nhiều brain instance song song, chuyên biệt hơn
-
-Hardware: Windows (Brain OS) + Linux machine 8GB RAM (media processing, Veo3)`,
+Roadmap:
+✅ Phase 1: Core (chat + memory + agents + telegram + logs + web UI)
+✅ Phase 2A: Tool Calling (14 tools — file I/O, HTTP, web search)
+✅ Phase 2B: GitHub Copilot orchestrator (thay Groq)
+✅ Phase 2C: Per-agent skills & context
+⬜ Phase 3: Self-improvement (brain tự update system prompt từ error logs)
+⬜ Phase 4: Content pipeline (kết nối tạo video tự động)
+⬜ Phase 5: Multi-agent (nhiều brain song song)`,
     timestamp: ts(69),
   },
 
-  // ── Tech preferences ───────────────────────────────────────────────────────
+  // ── Nam preferences ────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Nam thích làm việc theo phong cách nào? Có preference gì không?',
+    content: 'Nam thích làm việc theo phong cách nào?',
     timestamp: ts(60),
   },
   {
     role: 'assistant',
-    content: `Phong cách và preference của Nam:
-- Thích CLI và hands-on hơn GUI config phức tạp
-- Muốn hiểu cơ chế hoạt động, không chỉ dùng blackbox
-- Prefer interactive approach (wizard, step-by-step) hơn manual editing
-- Kỹ năng mạnh: Node.js, Linux, API integration, troubleshooting sâu
-- Đã dùng: OpenClaw, OpenRouter, Claude Pro, Gemini Pro
-- Đã bỏ OpenClaw vì full context forwarding → tốn token + giới hạn context window
-- Ngôn ngữ giao tiếp: tiếng Việt
-
-Khi giải thích technical: đi thẳng vào vấn đề, chỉ ra đúng file/dòng cần sửa, không cần giải thích dài dòng.`,
+    content: `Phong cách làm việc của Nam:
+- CLI/terminal, không thích UI phức tạp
+- Hands-on: thích xem code thực tế, không phải mô tả chung chung
+- Troubleshoot sâu: muốn hiểu rõ vấn đề trước khi fix
+- Tiết kiệm: ưu tiên free/cheap solutions (Copilot Pro, API free tiers)
+- Node.js/JavaScript là stack chính
+- Windows desktop + Linux server (8GB RAM)`,
     timestamp: ts(59),
   },
 ];
 
-// ─── Write to memory ──────────────────────────────────────────────────────────
-const newEntries = seeds.map((s, i) => ({
-  id: 'seed-' + i + '-' + Date.now().toString(36),
-  role: s.role,
-  content: s.content,
+// Append _seeded flag
+const seededEntries = seeds.map(s => ({
+  ...s,
   agentId: 'brain',
-  timestamp: s.timestamp,
+  id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
   _seeded: true,
 }));
 
-memory = [...newEntries, ...memory];
-fs.writeFileSync(MEMORY_FILE, JSON.stringify(memory, null, 2));
+memory.push(...seededEntries);
 
-// ─── Summary ─────────────────────────────────────────────────────────────────
-console.log('\x1b[32m✓\x1b[0m Seed context xong!');
-console.log(`  → Đã inject \x1b[36m${newEntries.length}\x1b[0m entries vào memory`);
-console.log(`  → Total: \x1b[36m${memory.length}\x1b[0m messages trong data/memory.json`);
-console.log('');
-console.log('  Khởi động lại Brain OS:');
-console.log('  \x1b[33mnode server.js\x1b[0m');
-console.log('');
+// Keep max 500 messages
+if (memory.length > 500) {
+  memory = memory.filter(m => m._seeded).concat(
+    memory.filter(m => !m._seeded).slice(-500 + seededEntries.length)
+  );
+}
+
+fs.writeFileSync(MEMORY_FILE, JSON.stringify(memory, null, 2));
+console.log(`✅ Seeded ${seededEntries.length} entries into brain memory`);
+console.log(`   Total messages: ${memory.length}`);
+if (reset) console.log('   (Full reset performed)');
