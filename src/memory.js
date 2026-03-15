@@ -1,0 +1,186 @@
+/**
+ * Memory & Prompt Assembler
+ *
+ * Stores all conversation history locally.
+ * When assembling a prompt, it SCORES each stored message by:
+ *   - Recency  (50%): newer messages rank higher
+ *   - Keyword overlap (40%): messages mentioning similar words to current input
+ *   - Role bonus (10%): user messages slightly preferred
+ *
+ * Then picks top-N messages that fit within the TOKEN BUDGET (default 3000 tokens).
+ * Messages are re-sorted by timestamp before being sent, so the LLM sees them in order.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const MEMORY_FILE = path.join(__dirname, '../data/memory.json');
+const SUMMARY_FILE = path.join(__dirname, '../data/summaries.json');
+const MAX_HISTORY = 500;
+
+// Rough chars-per-token estimate (conservative)
+const CHARS_PER_TOKEN = 4;
+
+let history = [];       // Full history array
+let summaries = [];     // Periodic summaries to compress old context
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
+
+function load() {
+  try {
+    if (fs.existsSync(MEMORY_FILE))
+      history = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
+    if (fs.existsSync(SUMMARY_FILE))
+      summaries = JSON.parse(fs.readFileSync(SUMMARY_FILE, 'utf8'));
+  } catch { history = []; summaries = []; }
+}
+
+function save() {
+  try {
+    fs.writeFileSync(MEMORY_FILE, JSON.stringify(history.slice(-MAX_HISTORY), null, 2));
+    fs.writeFileSync(SUMMARY_FILE, JSON.stringify(summaries, null, 2));
+  } catch {}
+}
+
+// ─── Store a message ──────────────────────────────────────────────────────────
+
+function store(role, content, agentId = 'brain', meta = {}) {
+  const msg = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    role,        // 'user' | 'assistant' | 'system'
+    content,
+    agentId,
+    timestamp: Date.now(),
+    ...meta
+  };
+  history.push(msg);
+  if (history.length > MAX_HISTORY) history.shift();
+  save();
+  return msg;
+}
+
+// ─── Keyword extraction (removes stop words) ──────────────────────────────────
+
+const STOP_WORDS = new Set([
+  'the','a','an','is','are','was','were','be','been','have','has','had',
+  'do','does','did','will','would','could','should','may','might','to',
+  'of','in','for','on','with','at','by','from','and','but','or','i',
+  'my','me','you','your','we','our','it','its','this','that','not','no',
+  'what','how','why','when','where','who','can','need','want','please',
+  'tôi','bạn','và','của','là','có','được','cho','trong','với','này','đây'
+]);
+
+function extractKeywords(text) {
+  return text.toLowerCase()
+    .split(/\W+/)
+    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
+}
+
+// ─── Score a single message for relevance ─────────────────────────────────────
+
+function scoreMessage(msg, keywords, msgIndex, total) {
+  // Recency: 0..1 (most recent = 1)
+  const recencyScore = total > 1 ? msgIndex / (total - 1) : 1;
+
+  // Keyword overlap
+  let keywordScore = 0;
+  if (keywords.length > 0) {
+    const msgWords = new Set(extractKeywords(msg.content));
+    const matches = keywords.filter(k => msgWords.has(k)).length;
+    keywordScore = matches / keywords.length;
+  }
+
+  // Role bonus
+  const roleBonus = msg.role === 'user' ? 0.1 : 0;
+
+  return 0.5 * recencyScore + 0.4 * keywordScore + 0.1 * roleBonus;
+}
+
+// ─── Prompt Assembler (core of the system) ────────────────────────────────────
+
+function assemblePrompt({
+  currentInput,
+  agentId = 'brain',
+  systemPrompt = '',
+  tokenBudget = 3000,
+  alwaysIncludeLastN = 6,   // Always include last N turns regardless of score
+}) {
+  const maxChars = tokenBudget * CHARS_PER_TOKEN;
+  const keywords = extractKeywords(currentInput);
+
+  // Filter by agentId (brain vs agent-specific history)
+  const agentHistory = history.filter(m => m.agentId === agentId && m.role !== 'system');
+
+  // Score messages
+  const scored = agentHistory.map((msg, i) => ({
+    ...msg,
+    _score: scoreMessage(msg, keywords, i, agentHistory.length)
+  }));
+
+  // Always include last N messages (recency guarantee)
+  const lastN = new Set(
+    scored.slice(-alwaysIncludeLastN).map(m => m.id)
+  );
+
+  // Sort by score descending, pick within budget
+  const byScore = [...scored].sort((a, b) => b._score - a._score);
+
+  let selected = new Map();
+  let usedChars = systemPrompt.length + currentInput.length + 200; // overhead
+
+  for (const msg of byScore) {
+    const cost = msg.content.length + 30;
+    if (usedChars + cost <= maxChars || lastN.has(msg.id)) {
+      selected.set(msg.id, msg);
+      usedChars += cost;
+    }
+    if (selected.size >= 40) break; // hard cap
+  }
+
+  // Re-sort selected by timestamp for coherent conversation flow
+  const context = [...selected.values()].sort((a, b) => a.timestamp - b.timestamp);
+
+  return {
+    systemPrompt,
+    context: context.map(m => ({ role: m.role, content: m.content })),
+    currentInput,
+    stats: {
+      totalMessages: agentHistory.length,
+      selectedMessages: context.length,
+      estimatedTokens: Math.round(usedChars / CHARS_PER_TOKEN),
+      keywords: keywords.slice(0, 8)
+    }
+  };
+}
+
+// ─── Store a summary of old messages ──────────────────────────────────────────
+
+function storeSummary(agentId, summaryText, coveredIds) {
+  summaries.push({
+    id: Date.now().toString(36),
+    agentId,
+    summary: summaryText,
+    coveredIds,
+    timestamp: Date.now()
+  });
+  // Remove covered messages from history
+  history = history.filter(m => !coveredIds.includes(m.id));
+  save();
+}
+
+module.exports = {
+  init: load,
+  store,
+  assemblePrompt,
+  storeSummary,
+  getHistory: (agentId = null, limit = 100) => {
+    let h = agentId ? history.filter(m => m.agentId === agentId) : history;
+    return h.slice(-limit);
+  },
+  clearHistory: (agentId = null) => {
+    if (agentId) history = history.filter(m => m.agentId !== agentId);
+    else history = [];
+    save();
+  },
+  getSummaries: () => summaries,
+};

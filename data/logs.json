@@ -1,0 +1,1138 @@
+[
+  {
+    "id": "1773502207730e6dc",
+    "timestamp": "2026-03-14T15:30:07.730Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: xin chào, bạn là ai",
+    "data": null
+  },
+  {
+    "id": "1773502207735x47j",
+    "timestamp": "2026-03-14T15:30:07.735Z",
+    "level": "warn",
+    "source": "brain",
+    "message": "GROQ_API_KEY is not set in environment variables",
+    "data": null
+  },
+  {
+    "id": "1773502261725b2pi",
+    "timestamp": "2026-03-14T15:31:01.725Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773502263192g8e8",
+    "timestamp": "2026-03-14T15:31:03.192Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "17735022631984mft",
+    "timestamp": "2026-03-14T15:31:03.198Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq API ready. Model: qwen2.5:3b",
+    "data": null
+  },
+  {
+    "id": "1773502263201np4g",
+    "timestamp": "2026-03-14T15:31:03.201Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773502267149mfe3",
+    "timestamp": "2026-03-14T15:31:07.149Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773502274903bfos",
+    "timestamp": "2026-03-14T15:31:14.903Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: xin chào, bạn là ai",
+    "data": null
+  },
+  {
+    "id": "1773502274906ufwp",
+    "timestamp": "2026-03-14T15:31:14.906Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 26/26 msgs, ~1227 tokens",
+    "data": null
+  },
+  {
+    "id": "1773502275666bn59",
+    "timestamp": "2026-03-14T15:31:15.666Z",
+    "level": "error",
+    "source": "brain",
+    "message": "Chat error: Groq error: 404 {\"error\":{\"message\":\"The model `qwen2.5:3b` does not exist or you do not have access to it.\",\"type\":\"invalid_request_error\",\"code\":\"model_not_found\"}}\n",
+    "data": null
+  },
+  {
+    "id": "1773502386659t7ea",
+    "timestamp": "2026-03-14T15:33:06.659Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773502387477uufw",
+    "timestamp": "2026-03-14T15:33:07.477Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773502387483sln4",
+    "timestamp": "2026-03-14T15:33:07.483Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq API ready. Model: openai/gpt-oss-120b",
+    "data": null
+  },
+  {
+    "id": "1773502387484l6wy",
+    "timestamp": "2026-03-14T15:33:07.484Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773502391674hhh8",
+    "timestamp": "2026-03-14T15:33:11.674Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773502398849f0pp",
+    "timestamp": "2026-03-14T15:33:18.849Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: xin chào, bạn là ai",
+    "data": null
+  },
+  {
+    "id": "1773502398852fjtv",
+    "timestamp": "2026-03-14T15:33:18.852Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 27/27 msgs, ~1240 tokens",
+    "data": null
+  },
+  {
+    "id": "1773502399467l717",
+    "timestamp": "2026-03-14T15:33:19.467Z",
+    "level": "info",
+    "source": "brain",
+    "message": "🔧 Tool calls (round 1): get_current_time",
+    "data": null
+  },
+  {
+    "id": "17735023994687uwx",
+    "timestamp": "2026-03-14T15:33:19.468Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: get_current_time(\"{}\")",
+    "data": null
+  },
+  {
+    "id": "1773502399553zsrl",
+    "timestamp": "2026-03-14T15:33:19.553Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ get_current_time → {\"iso\":\"2026-03-14T15:33:19.469Z\",\"local\":\"22:33:19 14/3/2026\",\"date\":\"Thứ Bảy, 14 tháng 3, 2026\",\"time\":\"22:33:19\",\"timestamp\":1773502399553,\"timezone\":\"Asia/Ho_Chi_Minh (UTC+7)\"}",
+    "data": null
+  },
+  {
+    "id": "17735024006926lux",
+    "timestamp": "2026-03-14T15:33:20.692Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (1 rounds, 250 chars)",
+    "data": null
+  },
+  {
+    "id": "1773502439540932h",
+    "timestamp": "2026-03-14T15:33:59.540Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: bạn có khả năng tìm kiếm các thông tin mới nhất không?",
+    "data": null
+  },
+  {
+    "id": "1773502439544k1n2",
+    "timestamp": "2026-03-14T15:33:59.544Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 29/29 msgs, ~1331 tokens",
+    "data": null
+  },
+  {
+    "id": "1773502440625dh86",
+    "timestamp": "2026-03-14T15:34:00.625Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded directly (210 chars)",
+    "data": null
+  },
+  {
+    "id": "17735024661997ukf",
+    "timestamp": "2026-03-14T15:34:26.199Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: hiện tại đang có bao nhiêu agent được kích hoạt?",
+    "data": null
+  },
+  {
+    "id": "1773502466201t7zy",
+    "timestamp": "2026-03-14T15:34:26.201Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 31/31 msgs, ~1410 tokens",
+    "data": null
+  },
+  {
+    "id": "1773502466835vu17",
+    "timestamp": "2026-03-14T15:34:26.835Z",
+    "level": "info",
+    "source": "brain",
+    "message": "🔧 Tool calls (round 1): list_agents",
+    "data": null
+  },
+  {
+    "id": "1773502466836e4p6",
+    "timestamp": "2026-03-14T15:34:26.836Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: list_agents(\"{}\")",
+    "data": null
+  },
+  {
+    "id": "1773502466839tvf8",
+    "timestamp": "2026-03-14T15:34:26.839Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":1,\"active\":1,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\"}]}",
+    "data": null
+  },
+  {
+    "id": "1773502467855lbl3",
+    "timestamp": "2026-03-14T15:34:27.855Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (1 rounds, 195 chars)",
+    "data": null
+  },
+  {
+    "id": "1773502512401dhth",
+    "timestamp": "2026-03-14T15:35:12.401Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: tôi đã config telegram, bạn hãy nhắn tin cho tôi thử xem",
+    "data": null
+  },
+  {
+    "id": "1773502512403u21n",
+    "timestamp": "2026-03-14T15:35:12.403Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 33/33 msgs, ~1488 tokens",
+    "data": null
+  },
+  {
+    "id": "1773502513114eiax",
+    "timestamp": "2026-03-14T15:35:13.114Z",
+    "level": "info",
+    "source": "brain",
+    "message": "🔧 Tool calls (round 1): list_agents",
+    "data": null
+  },
+  {
+    "id": "1773502513115axby",
+    "timestamp": "2026-03-14T15:35:13.115Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: list_agents(\"{}\")",
+    "data": null
+  },
+  {
+    "id": "1773502513116fstr",
+    "timestamp": "2026-03-14T15:35:13.116Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":1,\"active\":1,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\"}]}",
+    "data": null
+  },
+  {
+    "id": "1773502514569pqxf",
+    "timestamp": "2026-03-14T15:35:14.569Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (1 rounds, 516 chars)",
+    "data": null
+  },
+  {
+    "id": "1773502558786n7tz",
+    "timestamp": "2026-03-14T15:35:58.786Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: đây là thông tin, bạn hãy tạo cho tôi 1 agent và thử nhắn 1 tin xem:\nTele bot to",
+    "data": null
+  },
+  {
+    "id": "1773502558788a8i4",
+    "timestamp": "2026-03-14T15:35:58.788Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 35/35 msgs, ~1671 tokens",
+    "data": null
+  },
+  {
+    "id": "1773502560117es3a",
+    "timestamp": "2026-03-14T15:36:00.117Z",
+    "level": "info",
+    "source": "brain",
+    "message": "🔧 Tool calls (round 1): call_agent",
+    "data": null
+  },
+  {
+    "id": "1773502560122e67t",
+    "timestamp": "2026-03-14T15:36:00.122Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"dev-agent\\\",\\\"task\\\":\\\"Create a new Telegram agent using the provided bot token '80)",
+    "data": null
+  },
+  {
+    "id": "1773502560124ga1b",
+    "timestamp": "2026-03-14T15:36:00.124Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"error\":\"Agent not found: dev-agent. Available: openrouter-mmq0ffyd\"}",
+    "data": null
+  },
+  {
+    "id": "1773502567036cr6e",
+    "timestamp": "2026-03-14T15:36:07.036Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (1 rounds, 2756 chars)",
+    "data": null
+  },
+  {
+    "id": "17735035394181auj",
+    "timestamp": "2026-03-14T15:52:19.418Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773503540282fbb7",
+    "timestamp": "2026-03-14T15:52:20.282Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773503540290l67f",
+    "timestamp": "2026-03-14T15:52:20.290Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "17735035402920vud",
+    "timestamp": "2026-03-14T15:52:20.292Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773503544619ur67",
+    "timestamp": "2026-03-14T15:52:24.619Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773503557358sjba",
+    "timestamp": "2026-03-14T15:52:37.358Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773503559742idhw",
+    "timestamp": "2026-03-14T15:52:39.742Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773503559748m9j6",
+    "timestamp": "2026-03-14T15:52:39.748Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "17735035597502j8w",
+    "timestamp": "2026-03-14T15:52:39.750Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773503563741czgv",
+    "timestamp": "2026-03-14T15:52:43.741Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773503616516acc9",
+    "timestamp": "2026-03-14T15:53:36.516Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: đang có bao nhiêu agent đang hoạt động?",
+    "data": null
+  },
+  {
+    "id": "1773503616520ykfp",
+    "timestamp": "2026-03-14T15:53:36.520Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 37/37 msgs, ~2385 tokens, lessons: 0",
+    "data": null
+  },
+  {
+    "id": "17735036173290tg3",
+    "timestamp": "2026-03-14T15:53:37.329Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 1): list_agents",
+    "data": null
+  },
+  {
+    "id": "1773503617331u3vo",
+    "timestamp": "2026-03-14T15:53:37.331Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: list_agents(\"null\")",
+    "data": null
+  },
+  {
+    "id": "1773503617332sxk1",
+    "timestamp": "2026-03-14T15:53:37.332Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":1,\"active\":1,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\"}]}",
+    "data": null
+  },
+  {
+    "id": "1773503618716lh9r",
+    "timestamp": "2026-03-14T15:53:38.716Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (1 rounds, 268 chars)",
+    "data": null
+  },
+  {
+    "id": "17735036819074nf9",
+    "timestamp": "2026-03-14T15:54:41.907Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: sử dung openrouter agent để tìm thông tin về openclaw",
+    "data": null
+  },
+  {
+    "id": "1773503681908n3i3",
+    "timestamp": "2026-03-14T15:54:41.908Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 39/39 msgs, ~2480 tokens, lessons: 0",
+    "data": null
+  },
+  {
+    "id": "1773503682853a6zw",
+    "timestamp": "2026-03-14T15:54:42.853Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 1): call_agent",
+    "data": null
+  },
+  {
+    "id": "1773503682855nskb",
+    "timestamp": "2026-03-14T15:54:42.855Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"openrouter-mmq0yd\\\",\\\"task\\\":\\\"tìm kiếm thông tin về openclaw\\\"}\")",
+    "data": null
+  },
+  {
+    "id": "1773503682857rhf4",
+    "timestamp": "2026-03-14T15:54:42.857Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"error\":\"Agent not found: openrouter-mmq0yd. Available: openrouter-mmq0ffyd\"}",
+    "data": null
+  },
+  {
+    "id": "17735036828603x0d",
+    "timestamp": "2026-03-14T15:54:42.860Z",
+    "level": "info",
+    "source": "self-learn",
+    "message": "New lesson (tool_error): Khi gọi agent \"openrouter-mmq0yd\", agent đó không tồn tại. Hãy dùng list_agents ",
+    "data": null
+  },
+  {
+    "id": "1773503683360pwp0",
+    "timestamp": "2026-03-14T15:54:43.360Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 2): call_agent",
+    "data": null
+  },
+  {
+    "id": "17735036833604mhz",
+    "timestamp": "2026-03-14T15:54:43.360Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"openrouter-mmq0ffyd\\\",\\\"task\\\":\\\"tìm kiếm thông tin về openclaw\\\"}\")",
+    "data": null
+  },
+  {
+    "id": "1773503683361x97d",
+    "timestamp": "2026-03-14T15:54:43.361Z",
+    "level": "info",
+    "source": "tools",
+    "message": "📡 Delegating to Openrouter: \"tìm kiếm thông tin về openclaw...\"",
+    "data": null
+  },
+  {
+    "id": "1773503683362cqam",
+    "timestamp": "2026-03-14T15:54:43.362Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Running. Context: 6 msgs, ~152 tokens",
+    "data": null
+  },
+  {
+    "id": "17735036833649e4v",
+    "timestamp": "2026-03-14T15:54:43.364Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Auto-selected model: openai/gpt-4o-mini",
+    "data": null
+  },
+  {
+    "id": "17735036833653b80",
+    "timestamp": "2026-03-14T15:54:43.365Z",
+    "level": "debug",
+    "source": "agents",
+    "message": "OpenRouter model: openai/gpt-4o-mini (auto-selected)",
+    "data": null
+  },
+  {
+    "id": "1773503743367gcu3",
+    "timestamp": "2026-03-14T15:55:43.367Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"agent\":\"Openrouter\",\"response\":\"Cl là dự mã mở thường quan việc công cụ hoặc cho thực các vụ môỏng Tuy, thông tin cụ thểClaw thể \\n\\n thể một trò thư mã mở đó Nếu bạn cần tin thể, lòng tôi biết thêm",
+    "data": null
+  },
+  {
+    "id": "1773503745440barn",
+    "timestamp": "2026-03-14T15:55:45.440Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (2 rounds, 429 chars)",
+    "data": null
+  },
+  {
+    "id": "1773504460695893z",
+    "timestamp": "2026-03-14T16:07:40.695Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "177350446161033my",
+    "timestamp": "2026-03-14T16:07:41.610Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773504461616x39g",
+    "timestamp": "2026-03-14T16:07:41.616Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "1773504461618md3l",
+    "timestamp": "2026-03-14T16:07:41.618Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773504465899tz7a",
+    "timestamp": "2026-03-14T16:07:45.899Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773504541543mb0g",
+    "timestamp": "2026-03-14T16:09:01.543Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "17735046045609hn4",
+    "timestamp": "2026-03-14T16:10:04.560Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773504604566nlo9",
+    "timestamp": "2026-03-14T16:10:04.566Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "1773504604568roca",
+    "timestamp": "2026-03-14T16:10:04.568Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773504608672oqvt",
+    "timestamp": "2026-03-14T16:10:08.672Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773504835344r5dy",
+    "timestamp": "2026-03-14T16:13:55.344Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773504836495popf",
+    "timestamp": "2026-03-14T16:13:56.495Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773504836504jho8",
+    "timestamp": "2026-03-14T16:13:56.504Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "1773504836505moy2",
+    "timestamp": "2026-03-14T16:13:56.506Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773504840422t7nb",
+    "timestamp": "2026-03-14T16:14:00.422Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773504877149ezdi",
+    "timestamp": "2026-03-14T16:14:37.149Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773504878053tsj4",
+    "timestamp": "2026-03-14T16:14:38.053Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773504878059nrko",
+    "timestamp": "2026-03-14T16:14:38.059Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "1773504878061zf1s",
+    "timestamp": "2026-03-14T16:14:38.061Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773504881986afhb",
+    "timestamp": "2026-03-14T16:14:41.986Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773504941917022h",
+    "timestamp": "2026-03-14T16:15:41.917Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Disconnected",
+    "data": null
+  },
+  {
+    "id": "1773504942695om6p",
+    "timestamp": "2026-03-14T16:15:42.695Z",
+    "level": "info",
+    "source": "system",
+    "message": "Agents loaded: 1",
+    "data": null
+  },
+  {
+    "id": "1773504942701zz6d",
+    "timestamp": "2026-03-14T16:15:42.701Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Groq ready. Model: llama-3.3-70b-versatile",
+    "data": null
+  },
+  {
+    "id": "1773504942704iggz",
+    "timestamp": "2026-03-14T16:15:42.704Z",
+    "level": "info",
+    "source": "system",
+    "message": "Server started on port 3333",
+    "data": null
+  },
+  {
+    "id": "1773504946565zyaf",
+    "timestamp": "2026-03-14T16:15:46.565Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Connected: @lucas_daily_report_bot",
+    "data": null
+  },
+  {
+    "id": "1773504958061yixs",
+    "timestamp": "2026-03-14T16:15:58.061Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Owner chat ID set: 6544034825",
+    "data": null
+  },
+  {
+    "id": "1773504971665g9bw",
+    "timestamp": "2026-03-14T16:16:11.665Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "Sent to owner (chatId: 6544034825): Hello boss",
+    "data": null
+  },
+  {
+    "id": "1773504992862nlcf",
+    "timestamp": "2026-03-14T16:16:32.862Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152: hello bot",
+    "data": null
+  },
+  {
+    "id": "1773504992866mxer",
+    "timestamp": "2026-03-14T16:16:32.866Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 40/41 msgs, ~2593 tokens, lessons: 1",
+    "data": null
+  },
+  {
+    "id": "177350499521030l6",
+    "timestamp": "2026-03-14T16:16:35.210Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 1): call_agent",
+    "data": null
+  },
+  {
+    "id": "17735049952111dc1",
+    "timestamp": "2026-03-14T16:16:35.211Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"search-agent\\\",\\\"task\\\":\\\"Tím kiế̃m thông tin và cập nhập động OpenClaw và các ược )",
+    "data": null
+  },
+  {
+    "id": "1773504995213t964",
+    "timestamp": "2026-03-14T16:16:35.213Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"error\":\"Agent not found: search-agent. Available: openrouter-mmq0ffyd\"}",
+    "data": null
+  },
+  {
+    "id": "1773504995214mibf",
+    "timestamp": "2026-03-14T16:16:35.214Z",
+    "level": "info",
+    "source": "self-learn",
+    "message": "New lesson (tool_error): Khi gọi agent \"search-agent\", agent đó không tồn tại. Hãy dùng list_agents trước",
+    "data": null
+  },
+  {
+    "id": "1773504995741jbvy",
+    "timestamp": "2026-03-14T16:16:35.741Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 2): call_agent",
+    "data": null
+  },
+  {
+    "id": "17735049957420jr1",
+    "timestamp": "2026-03-14T16:16:35.742Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"openrouter-mmq0ffyd\\\",\\\"task\\\":\\\"openclaw\\\"}\")",
+    "data": null
+  },
+  {
+    "id": "17735049957432tka",
+    "timestamp": "2026-03-14T16:16:35.743Z",
+    "level": "info",
+    "source": "tools",
+    "message": "📡 Delegating to Openrouter: \"openclaw...\"",
+    "data": null
+  },
+  {
+    "id": "17735049957453k6n",
+    "timestamp": "2026-03-14T16:16:35.745Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Running. Context: 7 msgs, ~162 tokens",
+    "data": null
+  },
+  {
+    "id": "17735049957493qqs",
+    "timestamp": "2026-03-14T16:16:35.749Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Auto-selected model: openai/gpt-4o-mini",
+    "data": null
+  },
+  {
+    "id": "1773504995750j9eg",
+    "timestamp": "2026-03-14T16:16:35.750Z",
+    "level": "debug",
+    "source": "agents",
+    "message": "OpenRouter model: openai/gpt-4o-mini (auto-selected)",
+    "data": null
+  },
+  {
+    "id": "17735050557472l7m",
+    "timestamp": "2026-03-14T16:17:35.747Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"agent\":\"Openrouter\",\"response\":\"Cl là dự mã mở quan aninh, t một cụ bộ cụ phát và tích Tuy, tin thể Openaw thể đầy hoặc rõàng vì án có không biến nhiều công cụ mạng.\\n\\n bạn cần thông chi hơn cụ tín",
+    "data": null
+  },
+  {
+    "id": "1773505057496h7t5",
+    "timestamp": "2026-03-14T16:17:37.496Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Responded with tools (2 rounds, 348 chars)",
+    "data": null
+  },
+  {
+    "id": "177350506842889t7",
+    "timestamp": "2026-03-14T16:17:48.428Z",
+    "level": "info",
+    "source": "telegram",
+    "message": "@adnam152: hello",
+    "data": null
+  },
+  {
+    "id": "1773505068430pnuw",
+    "timestamp": "2026-03-14T16:17:48.430Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 40/43 msgs, ~2560 tokens, lessons: 2",
+    "data": null
+  },
+  {
+    "id": "17735050694469eyz",
+    "timestamp": "2026-03-14T16:17:49.446Z",
+    "level": "error",
+    "source": "brain",
+    "message": "Chat error: Groq error: 400 {\"error\":{\"message\":\"Failed to call a function. Please adjust your prompt. See 'failed_generation' for more details.\",\"type\":\"invalid_request_error\",\"code\":\"tool_use_failed\",\"failed_generation\":\"\\u003cfunction=call_agent {\\\"agent_id\\\": \\\"dev-agent\\\", \\\"task\\\": \\\"xem th\\\\u00e0nh ph\\\\u1ed1 h\\\\u1ea1i long\\\"})\\u003c/function\\u003e\\n\"}}\n",
+    "data": null
+  },
+  {
+    "id": "17735050869565xmc",
+    "timestamp": "2026-03-14T16:18:06.956Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: hello",
+    "data": null
+  },
+  {
+    "id": "1773505086957xkn0",
+    "timestamp": "2026-03-14T16:18:06.957Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 40/44 msgs, ~2489 tokens, lessons: 2",
+    "data": null
+  },
+  {
+    "id": "1773505088495015q",
+    "timestamp": "2026-03-14T16:18:08.495Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 1): list_agents",
+    "data": null
+  },
+  {
+    "id": "1773505088496fy4g",
+    "timestamp": "2026-03-14T16:18:08.496Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: list_agents(\"null\")",
+    "data": null
+  },
+  {
+    "id": "1773505088499a58g",
+    "timestamp": "2026-03-14T16:18:08.499Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":1,\"active\":1,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\"}]}",
+    "data": null
+  },
+  {
+    "id": "1773505088674m4i7",
+    "timestamp": "2026-03-14T16:18:08.674Z",
+    "level": "error",
+    "source": "brain",
+    "message": "Chat error: Groq error: 429 {\"error\":{\"message\":\"Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01kkpey29yea4rzxx3aqn5e1vc` service tier `on_demand` on tokens per minute (TPM): Limit 12000, Used 9064, Requested 3931. Please try again in 4.975s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n",
+    "data": null
+  },
+  {
+    "id": "1773505123835pgp2",
+    "timestamp": "2026-03-14T16:18:43.835Z",
+    "level": "info",
+    "source": "brain",
+    "message": "User: hi",
+    "data": null
+  },
+  {
+    "id": "177350512383664ox",
+    "timestamp": "2026-03-14T16:18:43.836Z",
+    "level": "debug",
+    "source": "brain",
+    "message": "Context: 40/45 msgs, ~2480 tokens, lessons: 2",
+    "data": null
+  },
+  {
+    "id": "1773505124742k95b",
+    "timestamp": "2026-03-14T16:18:44.742Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 1): call_agent",
+    "data": null
+  },
+  {
+    "id": "1773505124744hwfu",
+    "timestamp": "2026-03-14T16:18:44.744Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"dev-agent\\\",\\\"task\\\":\\\"hello world python code example\\\"}\")",
+    "data": null
+  },
+  {
+    "id": "1773505124745by78",
+    "timestamp": "2026-03-14T16:18:44.745Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"error\":\"Agent not found: dev-agent. Available: openrouter-mmq0ffyd\"}",
+    "data": null
+  },
+  {
+    "id": "1773505124746ugz2",
+    "timestamp": "2026-03-14T16:18:44.746Z",
+    "level": "info",
+    "source": "self-learn",
+    "message": "New lesson (tool_error): Khi gọi agent \"dev-agent\", agent đó không tồn tại. Hãy dùng list_agents trước để",
+    "data": null
+  },
+  {
+    "id": "17735051253668g7n",
+    "timestamp": "2026-03-14T16:18:45.366Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 2): call_agent",
+    "data": null
+  },
+  {
+    "id": "1773505125367mffv",
+    "timestamp": "2026-03-14T16:18:45.367Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: call_agent(\"{\\\"agent_id\\\":\\\"openrouter-mmq0ffyd\\\",\\\"task\\\":\\\"What time is it now?\\\"}\")",
+    "data": null
+  },
+  {
+    "id": "1773505125368ayg6",
+    "timestamp": "2026-03-14T16:18:45.368Z",
+    "level": "info",
+    "source": "tools",
+    "message": "📡 Delegating to Openrouter: \"What time is it now?...\"",
+    "data": null
+  },
+  {
+    "id": "1773505125369e3l1",
+    "timestamp": "2026-03-14T16:18:45.369Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Running. Context: 8 msgs, ~174 tokens",
+    "data": null
+  },
+  {
+    "id": "1773505125370s144",
+    "timestamp": "2026-03-14T16:18:45.370Z",
+    "level": "info",
+    "source": "agent:Openrouter",
+    "message": "Auto-selected model: openai/gpt-4o-mini",
+    "data": null
+  },
+  {
+    "id": "1773505125371x3b1",
+    "timestamp": "2026-03-14T16:18:45.371Z",
+    "level": "debug",
+    "source": "agents",
+    "message": "OpenRouter model: openai/gpt-4o-mini (auto-selected)",
+    "data": null
+  },
+  {
+    "id": "1773505185377isfk",
+    "timestamp": "2026-03-14T16:19:45.377Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ call_agent → {\"agent\":\"Openrouter\",\"response\":\" sorry but can't real information as current. can check time your. you any questions need with feel to!\",\"partial\":true}",
+    "data": null
+  },
+  {
+    "id": "1773505186208n7i6",
+    "timestamp": "2026-03-14T16:19:46.208Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 3): get_current_time",
+    "data": null
+  },
+  {
+    "id": "1773505186209y2vy",
+    "timestamp": "2026-03-14T16:19:46.209Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: get_current_time(\"null\")",
+    "data": null
+  },
+  {
+    "id": "17735051862244fmu",
+    "timestamp": "2026-03-14T16:19:46.224Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ get_current_time → {\"iso\":\"2026-03-14T16:19:46.210Z\",\"local\":\"23:19:46 14/3/2026\",\"date\":\"Thứ Bảy, 14 tháng 3, 2026\",\"time\":\"23:19:46\",\"timestamp\":1773505186224,\"timezone\":\"Asia/Ho_Chi_Minh (UTC+7)\"}",
+    "data": null
+  },
+  {
+    "id": "1773505186654h553",
+    "timestamp": "2026-03-14T16:19:46.654Z",
+    "level": "info",
+    "source": "brain",
+    "message": "Tool calls (round 4): list_agents",
+    "data": null
+  },
+  {
+    "id": "1773505186655u5ib",
+    "timestamp": "2026-03-14T16:19:46.655Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "🔧 Executing: list_agents(\"null\")",
+    "data": null
+  },
+  {
+    "id": "1773505186656udmr",
+    "timestamp": "2026-03-14T16:19:46.656Z",
+    "level": "debug",
+    "source": "tools",
+    "message": "✅ list_agents → {\"total\":1,\"active\":1,\"disabled\":0,\"agents\":[{\"id\":\"openrouter-mmq0ffyd\",\"name\":\"Openrouter\",\"provider\":\"openrouter\",\"model\":\"auto\",\"active\":true,\"description\":\"(no description)\"}]}",
+    "data": null
+  },
+  {
+    "id": "1773505186824n1vi",
+    "timestamp": "2026-03-14T16:19:46.824Z",
+    "level": "error",
+    "source": "brain",
+    "message": "Chat error: Groq error: 429 {\"error\":{\"message\":\"Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01kkpey29yea4rzxx3aqn5e1vc` service tier `on_demand` on tokens per minute (TPM): Limit 12000, Used 7880, Requested 4152. Please try again in 160ms. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing\",\"type\":\"tokens\",\"code\":\"rate_limit_exceeded\"}}\n",
+    "data": null
+  }
+]

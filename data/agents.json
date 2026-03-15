@@ -1,0 +1,15 @@
+[
+  {
+    "id": "openrouter-mmq0ffyd",
+    "name": "Openrouter",
+    "description": "",
+    "provider": "openrouter",
+    "model": "auto",
+    "systemPrompt": "You are a helpful assistant.",
+    "apiKeyVar": "",
+    "active": true,
+    "createdAt": 1773473662597,
+    "apiKey": "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",
+    "updatedAt": 1773473682552
+  }
+]
