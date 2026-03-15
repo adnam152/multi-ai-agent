@@ -27,10 +27,12 @@ export default function ChatTab({ send, agents, messages, setMessages, isStreami
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Load history when agent changes OR when WS first connects
   useEffect(() => {
+    if (!wsReady) return
     setMessages([])
-    send({ type: 'load_history', agentId: currentAgentId, limit: 30 })
-  }, [currentAgentId])
+    send({ type: 'load_history', agentId: currentAgentId, limit: 50 })
+  }, [wsReady, currentAgentId])
 
   const sendChat = useCallback(() => {
     const content = input.trim()

@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWebSocket } from './hooks/useWebSocket'
 import Sidebar from './components/Sidebar'
 import ChatTab from './components/ChatTab'
@@ -6,65 +7,48 @@ import AgentsTab from './components/AgentsTab'
 import TelegramTab from './components/TelegramTab'
 import LogsTab from './components/LogsTab'
 
+const fetcher = (url) => fetch(url).then(r => r.json())
+
 export default function App() {
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('chat')
   const [isDark, setIsDark] = useState(() => (localStorage.getItem('theme') || 'dark') === 'dark')
   const [wsReady, setWsReady] = useState(false)
-  const [status, setStatus] = useState({ brain: { available: false, model: '' }, memorySize: 0, agentCount: 0 })
-  const [agents, setAgents] = useState([])
-  const [logs, setLogs] = useState([])
-  const [telegramStatus, setTelegramStatus] = useState({})
-  const [telegramMessages, setTelegramMessages] = useState([])
-
   const [chatMessages, setChatMessages] = useState([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentAgentId, setCurrentAgentId] = useState('brain')
+
+  // ── REST queries ──────────────────────────────────────────────────────────
+  const { data: status = { brain: { available: false, model: '' }, memorySize: 0 } } =
+    useQuery({ queryKey: ['status'], queryFn: () => fetcher('/api/status'), refetchInterval: 30_000 })
+
+  const { data: agents = [], refetch: refetchAgents } =
+    useQuery({ queryKey: ['agents'], queryFn: () => fetcher('/api/agents') })
+
+  const { data: logs = [] } =
+    useQuery({ queryKey: ['logs'], queryFn: () => fetcher('/api/logs?limit=200') })
+
+  const { data: telegramStatus = {} } =
+    useQuery({ queryKey: ['telegram'], queryFn: () => fetcher('/api/telegram') })
+
+  const { data: telegramMessages = [] } =
+    useQuery({ queryKey: ['telegram-messages'], queryFn: () => fetcher('/api/telegram/messages') })
 
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
     localStorage.setItem('theme', isDark ? 'dark' : 'light')
   }, [isDark])
 
-  const loadStatus = useCallback(async () => {
-    try {
-      const r = await fetch('/api/status')
-      const s = await r.json()
-      setStatus(s)
-      setTelegramStatus(s.telegram)
-    } catch {}
-  }, [])
-
-  const loadAgents = useCallback(async () => {
-    try {
-      const r = await fetch('/api/agents')
-      setAgents(await r.json())
-    } catch {}
-  }, [])
-
-  const loadLogs = useCallback(async () => {
-    try {
-      const r = await fetch('/api/logs?limit=200')
-      setLogs(await r.json())
-    } catch {}
-  }, [])
-
-  const loadTelegram = useCallback(async () => {
-    try {
-      const r = await fetch('/api/telegram')
-      setTelegramStatus(await r.json())
-      const msgs = await fetch('/api/telegram/messages').then(r => r.json())
-      if (msgs?.length) setTelegramMessages(msgs)
-    } catch {}
-  }, [])
-
+  // ── WebSocket handler ─────────────────────────────────────────────────────
   const send = useWebSocket(useCallback((msg) => {
     switch (msg.type) {
       case 'ws_open':
         setWsReady(true)
-        loadStatus()
-        loadAgents()
-        loadLogs()
-        loadTelegram()
+        queryClient.invalidateQueries({ queryKey: ['status'] })
+        queryClient.invalidateQueries({ queryKey: ['agents'] })
+        queryClient.invalidateQueries({ queryKey: ['logs'] })
+        queryClient.invalidateQueries({ queryKey: ['telegram'] })
+        queryClient.invalidateQueries({ queryKey: ['telegram-messages'] })
         break
       case 'ws_close':
         setWsReady(false)
@@ -76,7 +60,7 @@ export default function App() {
           if (last?.type === 'streaming') {
             return [...prev.slice(0, -1), { ...last, tokens: last.tokens + msg.token }]
           }
-          return [...prev, { id: msg.requestId, type: 'streaming', tokens: msg.token, agentId: currentAgentId }]
+          return [...prev, { id: msg.requestId, type: 'streaming', tokens: msg.token }]
         })
         break
       case 'tool_call':
@@ -91,20 +75,22 @@ export default function App() {
           }
           return prev
         })
-        loadAgents()
+        refetchAgents()
         break
       case 'chat_error':
         setIsStreaming(false)
         setChatMessages(prev => [...prev, { id: Date.now(), type: 'error', content: msg.error }])
         break
       case 'log':
-        if (msg.entry) setLogs(prev => [...prev.slice(-499), msg.entry])
+        if (msg.entry) {
+          queryClient.setQueryData(['logs'], (old = []) => [...old.slice(-499), msg.entry])
+        }
         break
       case 'telegram_status':
-        setTelegramStatus(msg.status)
+        queryClient.setQueryData(['telegram'], msg.status)
         break
       case 'telegram_message':
-        setTelegramMessages(prev => [...prev, msg.message])
+        queryClient.setQueryData(['telegram-messages'], (old = []) => [...old, msg.message])
         break
       case 'chat_cleared':
         setChatMessages([])
@@ -119,7 +105,7 @@ export default function App() {
         }
         break
     }
-  }, [loadStatus, loadAgents, loadLogs, loadTelegram, currentAgentId]))
+  }, [queryClient, refetchAgents]))
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -149,13 +135,26 @@ export default function App() {
           />
         )}
         {activeTab === 'agents' && (
-          <AgentsTab agents={agents} onRefresh={loadAgents} />
+          <AgentsTab agents={agents} onRefresh={refetchAgents} />
         )}
         {activeTab === 'telegram' && (
-          <TelegramTab status={telegramStatus} messages={telegramMessages} onRefresh={loadTelegram} />
+          <TelegramTab
+            status={telegramStatus}
+            messages={telegramMessages}
+            onRefresh={() => {
+              queryClient.invalidateQueries({ queryKey: ['telegram'] })
+              queryClient.invalidateQueries({ queryKey: ['telegram-messages'] })
+            }}
+          />
         )}
         {activeTab === 'logs' && (
-          <LogsTab logs={logs} onClear={() => { fetch('/api/logs', { method: 'DELETE' }); setLogs([]) }} />
+          <LogsTab
+            logs={logs}
+            onClear={async () => {
+              await fetch('/api/logs', { method: 'DELETE' })
+              queryClient.setQueryData(['logs'], [])
+            }}
+          />
         )}
       </main>
     </div>
