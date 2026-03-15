@@ -2,11 +2,11 @@
 /**
  * seed-context.js — Inject initial project context into Brain memory
  *
- * Chạy 1 lần sau khi cài đặt:
- *   node seed-context.js
+ * OPTIONAL — run this once after setup to give Brain context about the project.
+ * Brain works without this; it will learn organically through conversation.
  *
- * Hoặc reset và seed lại:
- *   node seed-context.js --reset
+ *   node seed-context.js         # add/replace seeded entries
+ *   node seed-context.js --reset # delete ALL messages first, then seed
  */
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
@@ -14,207 +14,240 @@ const { MEMORY_CONSTANTS, LOGGER_CONSTANTS } = require('./src/constants');
 const db = require('./src/db');
 
 const reset = process.argv.includes('--reset');
-
 const now = Date.now();
 const ts = (offsetMinutes) => now - offsetMinutes * 60 * 1000;
 
 const seeds = [
 
-  // ── Project overview ──────────────────────────────────────────────────────
+  // ── System overview ────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Brain OS là gì? Hệ thống này dùng để làm gì?',
+    content: 'What is Brain OS? What is this system for?',
     timestamp: ts(120),
   },
   {
     role: 'assistant',
-    content: `Brain OS là hệ thống AI orchestration chạy local. Kiến trúc:
+    content: `Brain OS is a local AI orchestration system. Architecture:
 
-- **Orchestrator**: GitHub Copilot qua copilot-api (http://localhost:4141) — thay Groq/Ollama
-- **Prompt Assembler**: lọc context thông minh (recency 50% + keyword 40% + role 10%), budget 10000 tokens
-- **Agents**: AI chuyên biệt với skills + context riêng (Claude, Gemini, OpenRouter, OpenAI, Copilot)
-- **14 Tools**: thời gian, agents, system, CLI, pipeline, file I/O, HTTP request, web search, Telegram
-- **Memory**: lưu trên Supabase (bắt buộc)
-- **Telegram**: điều khiển từ xa
-- **Web UI**: React + Vite, backend serve frontend/dist
+**Orchestrator**: GitHub Copilot via copilot-api (http://localhost:4141)
+**Backend**: Express + WebSocket server (port 3333)
+**Frontend**: React + Vite + Tailwind (served from backend/dist)
+**Persistence**: Supabase (required — no local fallback)
+**Agents**: Created by user — no defaults on first run
 
-Không cần Ollama. Orchestrator dùng Copilot Pro (free models: gpt-4.1-mini, gpt-4o-mini, gemini-2.0-flash).`,
+Key capabilities:
+- 17 tools: time, agents, system, shell, pipeline, file I/O, HTTP, web search, Telegram, skill import
+- Multi-backend search: Brave Search API → DuckDuckGo HTML → DDG Instant API
+- Skill import: ClawHub registry, SKILL.md URLs, raw content
+- Per-agent skills + context notes + auto-update
+- Telegram bot with per-chat isolated memory
+- Self-learning from corrections and errors`,
     timestamp: ts(119),
   },
 
-  // ── File structure ────────────────────────────────────────────────────────
+  // ── File structure ─────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Cấu trúc file của Brain OS như thế nào?',
+    content: 'What is the file structure of Brain OS?',
     timestamp: ts(110),
   },
   {
     role: 'assistant',
-    content: `brain-os/
+    content: `\`\`\`
+multi-ai-agent/
 ├── backend/
-│   ├── server.js      # Express + WebSocket, port 3333
-│   ├── seed-context.js
-│   ├── src/
-│   │   ├── brain.js
-│   │   ├── tools.js
-│   │   ├── memory.js
-│   │   ├── agents.js
-│   │   ├── self-learn.js
-│   │   ├── logger.js
-│   │   ├── telegram.js
-│   │   ├── db.js
-│   │   └── constants.js
-│   └── (không dùng data fallback)
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── constants.js
-│   │   ├── hooks/useWebSocket.js
-│   │   └── components/*
-│   └── dist/
-├── context.md         # Context file import vào conversation mới
-├── README.md          # Hướng dẫn setup
-└── package.json`,
+│   ├── server.js          # Express + WebSocket
+│   ├── seed-context.js    # Optional memory seeding
+│   └── src/
+│       ├── brain.js         # Copilot orchestrator
+│       ├── tools.js         # 17 tools
+│       ├── memory.js        # Context scoring + assembly
+│       ├── agents.js        # Agent management (no defaults)
+│       ├── self-learn.js    # Behavioral learning
+│       ├── skill-importer.js # ClawHub + SKILL.md integration
+│       ├── logger.js
+│       ├── telegram.js
+│       ├── db.js
+│       └── constants.js
+├── frontend/src/components/
+│   ├── ChatTab.jsx          # Fixed summarize + streaming markdown
+│   ├── AgentsTab.jsx
+│   ├── AgentModal.jsx       # ClawHub import UI, no Ollama
+│   ├── TelegramTab.jsx
+│   ├── LogsTab.jsx
+│   └── Sidebar.jsx
+├── .env
+├── context.md
+└── README.md
+\`\`\``,
     timestamp: ts(109),
   },
 
-  // ── Copilot provider ──────────────────────────────────────────────────────
+  // ── Agents ─────────────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Brain OS dùng Copilot như thế nào? Setup ra sao?',
+    content: 'How do agents work? Are there default agents?',
     timestamp: ts(100),
   },
   {
     role: 'assistant',
-    content: `Brain OS dùng GitHub Copilot qua copilot-api (open source: ericc-ch/copilot-api).
+    content: `**No default agents on first run.** Users create agents as needed.
 
-Setup 1 lần:
-1. \`npx copilot-api@latest auth\` → đăng nhập GitHub (device flow, mở URL)
-2. \`npx copilot-api@latest start\` → giữ chạy tại http://localhost:4141
+To create an agent:
+- Via UI: Agents tab → "+ New Agent"
+- Via chat: "Create a coding agent that specializes in Node.js"
 
-copilot-api expose OpenAI-compatible API → Brain OS gọi như bình thường.
+Agent structure:
+\`\`\`json
+{
+  "id": "my-agent-id",
+  "name": "My Agent",
+  "provider": "copilot",
+  "model": "gpt-5-mini",
+  "systemPrompt": "You are...",
+  "skills": [
+    "Always provide complete, runnable examples",
+    "Use TypeScript over JavaScript unless specified"
+  ],
+  "contextNotes": "Accumulated knowledge...",
+  "autoUpdateContext": true,
+  "active": true
+}
+\`\`\`
 
-Models Copilot Pro:
-- FREE (unlimited): gpt-4.1-mini, gpt-4o-mini, gemini-2.0-flash
-- x1 premium: gpt-4.1, gpt-4o, claude-sonnet-4.5, claude-haiku-3.5
-- x3 premium: o1-mini, o3-mini (reasoning models)
+**IMPORTANT**: All auto-generated skills must be in English.
 
-Brain dùng gpt-4.1-mini mặc định (free, nhanh).
-Đổi model: \`node backend/server.js --model gpt-4.1\` hoặc qua API POST /api/brain/model.`,
+Providers: copilot | claude | gemini | openrouter | openai
+(Note: ollama was removed — use copilot for local-first)`,
     timestamp: ts(99),
   },
 
-  // ── Agents with skills & context ──────────────────────────────────────────
+  // ── Search backends ────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Tính năng skills và context của agents hoạt động thế nào?',
+    content: 'How does web search work? Why does DuckDuckGo sometimes fail?',
     timestamp: ts(90),
   },
   {
     role: 'assistant',
-    content: `Mỗi agent trong Brain OS nay có 3 phần system prompt:
+    content: `The search_web tool tries 3 backends in order:
 
-1. systemPrompt: prompt cơ bản (giống cũ)
+1. **Brave Search API** (best quality)
+   - Set BRAVE_API_KEY in .env
+   - Free tier: 2,000 queries/month
+   - Get key: https://api.search.brave.com/
 
-2. skills[]: danh sách instructions riêng, ví dụ:
-   - "Luôn cung cấp code examples đầy đủ"
-   - "Ưu tiên Node.js/JavaScript"
-   Skills được append vào system prompt dưới dạng "## Skills & Instructions"
+2. **DuckDuckGo HTML scraping** (reliable fallback)
+   - No key needed
+   - Scrapes the HTML results page
 
-3. contextNotes: string tích lũy qua thời gian
-   - Nếu autoUpdateContext=true: tự động update sau mỗi reply
-   - Format: "[timestamp] Q: ... → A: ..."
-   - Giúp agent "nhớ" preference và patterns của user
+3. **DuckDuckGo Instant API** (last resort)
+   - api.duckduckgo.com — only returns "instant answers" (Wikipedia summaries)
+   - Rate-limited by IP with no published limits
+   - Often returns empty results for specific queries
 
-Cấu hình agents.json:
-{
-  id, name, provider, model, systemPrompt,
-  skills: ["skill 1", "skill 2"],
-  contextNotes: "...",
-  autoUpdateContext: true
-}
-
-API mới:
-- GET/PUT /api/agents/:id/skills
-- GET/PUT/DELETE /api/agents/:id/context`,
+**Recommendation**: Set BRAVE_API_KEY for reliable search.`,
     timestamp: ts(89),
   },
 
-  // ── Tools ─────────────────────────────────────────────────────────────────
+  // ── Skill import ───────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Brain OS có những tools gì mới?',
+    content: 'How do I import skills from ClawHub?',
     timestamp: ts(80),
   },
   {
     role: 'assistant',
-    content: `Brain OS nay có 14 tools (thêm 4 tools mới):
+    content: `Three ways to import ClawHub skills:
 
-Tools mới:
-11. read_file: Đọc file local (whitelist: project dir, workspace, Documents)
-  - Giới hạn: 512KB, 10000 chars output
-    
-12. write_file: Ghi file local (whitelist paths)
-    - mode: overwrite | append
-    
-13. http_request: HTTP GET/POST tới external API
-    - Headers tùy chỉnh, timeout, auto-parse JSON
-    
-14. search_web: Tìm kiếm web qua DuckDuckGo Instant API
-    - Trả về abstract + related topics
-    - max_results: 1-10
+**1. Via chat (easiest):**
+"Import the agent-browser skill from clawhub into my dev agent"
+→ I'll call import_skill({ slug: "agent-browser", target_agent_id: "dev-agent" })
 
-Tools cũ vẫn còn: get_current_time, list_agents, get_system_status, call_agent,
-manage_agent, get_memory_stats, run_command, run_pipeline, save_lesson, send_telegram.
+**2. Via UI:**
+Agents → Edit agent → Skills tab → "Import from ClawHub"
+- Paste a GitHub/raw SKILL.md URL
+- Or search ClawHub and click "+ Add"
 
-Tool calling dùng OpenAI-compatible format (tool_calls trong response).`,
+**3. Via API:**
+\`\`\`bash
+# Import by slug
+POST /api/skills/import
+{ "slug": "agent-browser", "target_agent_id": "dev-agent" }
+
+# Import from URL
+POST /api/skills/import
+{ "url": "https://raw.githubusercontent.com/openclaw/skills/main/skills/thesethrose/agent-browser/SKILL.md" }
+
+# Search registry
+GET /api/skills/search?q=web-search&limit=10
+\`\`\`
+
+**Example: agent-browser skill:**
+- Slug: "agent-browser" (by TheSethRose)
+- What it does: Headless browser automation via agent-browser CLI
+- Use for: web scraping, form automation, page interaction
+- Requires: agent-browser CLI installed (github.com/vercel-labs/agent-browser)`,
     timestamp: ts(79),
   },
 
-  // ── Goals & roadmap ────────────────────────────────────────────────────────
+  // ── Tools ──────────────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Mục tiêu và roadmap hiện tại của Brain OS?',
+    content: 'What tools does Brain OS have?',
     timestamp: ts(70),
   },
   {
     role: 'assistant',
-    content: `Mục tiêu của Nam:
-- AI content pipeline tự động 24/7 (faceless YouTube/TikTok + affiliate marketing)
-- Không tốn chi phí (dùng Copilot Pro + free tiers)
-- Setup đơn giản, hands-on
+    content: `Brain OS has 17 tools:
 
-Roadmap:
-✅ Phase 1: Core (chat + memory + agents + telegram + logs + web UI)
-✅ Phase 2A: Tool Calling (14 tools — file I/O, HTTP, web search)
-✅ Phase 2B: GitHub Copilot orchestrator (thay Groq)
-✅ Phase 2C: Per-agent skills & context
-⬜ Phase 3: Self-improvement (brain tự update system prompt từ error logs)
-⬜ Phase 4: Content pipeline (kết nối tạo video tự động)
-⬜ Phase 5: Multi-agent (nhiều brain song song)`,
+**Core**: get_current_time, list_agents, get_system_status, get_memory_stats
+**Agent management**: call_agent, manage_agent, run_pipeline, create_agent, update_agent
+**System**: run_command (read-only whitelist), send_telegram
+**File I/O**: read_file, write_file (safe directory whitelist)
+**Network**: http_request, search_web (multi-backend)
+**Skills**: import_skill (ClawHub + SKILL.md URL + raw content)
+**Learning**: save_lesson
+
+The import_skill tool can:
+- Import by ClawHub slug: \`{ "slug": "agent-browser" }\`
+- Import from URL: \`{ "url": "https://..." }\`
+- Parse raw content: \`{ "content": "---\\nname: ...\\n---\\n..." }\`
+- Add to existing agent: \`{ "slug": "...", "target_agent_id": "my-agent" }\``,
     timestamp: ts(69),
   },
 
-  // ── Nam preferences ────────────────────────────────────────────────────────
+  // ── Self-learning ──────────────────────────────────────────────────────────
   {
     role: 'user',
-    content: 'Nam thích làm việc theo phong cách nào?',
+    content: 'How does self-learning work? How good is it compared to ClawHub self-improving-agent skill?',
     timestamp: ts(60),
   },
   {
     role: 'assistant',
-    content: `Phong cách làm việc của Nam:
-- CLI/terminal, không thích UI phức tạp
-- Hands-on: thích xem code thực tế, không phải mô tả chung chung
-- Troubleshoot sâu: muốn hiểu rõ vấn đề trước khi fix
-- Tiết kiệm: ưu tiên free/cheap solutions (Copilot Pro, API free tiers)
-- Node.js/JavaScript là stack chính
-- Windows desktop + Linux server (8GB RAM)`,
+    content: `Current self-learning (self-learn.js):
+
+**What it does:**
+- Detects user corrections ("không phải", "sai rồi", "I mean...")
+- Detects satisfaction signals ("đúng rồi", "perfect", "thanks")
+- Learns from tool errors automatically
+- Stores lessons in Supabase → injected into future context via memory scoring
+
+**Limitations vs ClawHub self-improving-agent skill:**
+- ClawHub skill reviews session logs proactively (scheduled)
+- ClawHub skill has richer memory structure (hot memory + corrections log + preferences log)
+- Brain OS lessons are reactive (triggered by explicit signals)
+- Brain OS doesn't auto-review logs without user prompting
+
+**Areas to improve:**
+1. Scheduled log review (run every N conversations)
+2. Structured memory files (separate preferences vs corrections vs facts)
+3. Proactive pattern detection without explicit correction signals
+4. Lesson ranking by recency + frequency`,
     timestamp: ts(59),
   },
 ];
 
-// Append seeded meta
 const seededEntries = seeds.map(s => ({
   id: Date.now().toString(36) + Math.random().toString(36).slice(2, 2 + LOGGER_CONSTANTS.RANDOM_ID_SUFFIX_LENGTH),
   role: s.role,
@@ -238,7 +271,9 @@ async function run() {
       console.error(`❌ Failed to reset messages: ${error.message}`);
       process.exit(1);
     }
+    console.log('🗑️  All messages deleted.');
   } else {
+    // Remove old seeded entries only
     const { error } = await db.from('messages').delete().eq('agent_id', 'brain').contains('meta', { _seeded: true });
     if (error) {
       console.error(`❌ Failed to remove old seeded entries: ${error.message}`);
@@ -254,17 +289,17 @@ async function run() {
 
   const { count, error: countError } = await db.from('messages').select('id', { head: true, count: 'exact' });
   if (countError) {
-    console.error(`❌ Failed to count messages: ${countError.message}`);
+    console.error(`❌ Failed to count: ${countError.message}`);
     process.exit(1);
   }
 
   if (count > MEMORY_CONSTANTS.MAX_HISTORY) {
-    console.warn(`⚠️ Message count (${count}) exceeds MEMORY_CONSTANTS.MAX_HISTORY (${MEMORY_CONSTANTS.MAX_HISTORY}).`);
+    console.warn(`⚠️  Message count (${count}) exceeds MAX_HISTORY (${MEMORY_CONSTANTS.MAX_HISTORY})`);
   }
 
-  console.log(`✅ Seeded ${seededEntries.length} entries into Supabase memory`);
-  console.log(`   Total messages: ${count}`);
-  if (reset) console.log('   (Full reset performed)');
+  console.log(`✅ Seeded ${seededEntries.length} entries`);
+  console.log(`   Total messages in Supabase: ${count}`);
+  if (reset) console.log('   (Full reset was performed)');
 }
 
 run();

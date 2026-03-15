@@ -1,23 +1,30 @@
 import React, { useState } from 'react'
 
 const COPILOT_MODELS = [
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini · Free' },
+  { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini · Free' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini · Free' },
+  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash · Free' },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 · 0.33x' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro · 1x' },
-  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview) · 0.33x' },
-  { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview) · 1x' },
-  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro (Preview) · 1x' },
-  { id: 'gpt-4.1', label: 'GPT-4.1 · 0x' },
-  { id: 'gpt-4o', label: 'GPT-4o · 0x' },
-  { id: 'gpt-5-mini', label: 'GPT-5 mini · 0x' },
+  { id: 'gpt-4.1', label: 'GPT-4.1 · 1x' },
+  { id: 'gpt-4o', label: 'GPT-4o · 1x' },
   { id: 'gpt-5.1', label: 'GPT-5.1 · 1x' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini · Free' },
+  { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 · 1x' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro · 1x' },
   { id: 'gpt-5.1-codex', label: 'GPT-5.1-Codex · 1x' },
   { id: 'gpt-5.1-codex-max', label: 'GPT-5.1-Codex-Max · 1x' },
-  { id: 'gpt-5.1-codex-mini-preview', label: 'GPT-5.1-Codex-Mini (Preview) · 0.33x' },
   { id: 'gpt-5.2', label: 'GPT-5.2 · 1x' },
-  { id: 'gpt-5.2-codex', label: 'GPT-5.2-Codex · 1x' },
-  { id: 'gpt-5.3-codex', label: 'GPT-5.3-Codex · 1x' },
   { id: 'grok-code-fast-1', label: 'Grok Code Fast 1 · 0.25x' },
-  { id: 'raptor-mini-preview', label: 'Raptor mini (Preview) · 0x' },
+  { id: 'raptor-mini-preview', label: 'Raptor Mini (Preview) · Free' },
+]
+
+const PROVIDERS = [
+  { id: 'copilot', label: '🤖 Copilot', note: 'No API key needed' },
+  { id: 'claude', label: '🟣 Claude', note: 'ANTHROPIC_API_KEY' },
+  { id: 'gemini', label: '🔵 Gemini', note: 'GEMINI_API_KEY' },
+  { id: 'openai', label: '🟢 OpenAI', note: 'OPENAI_API_KEY' },
+  { id: 'openrouter', label: '🌐 OpenRouter', note: 'OPENROUTER_API_KEY' },
 ]
 
 export default function AgentModal({ agent, onClose, onSave }) {
@@ -38,6 +45,14 @@ export default function AgentModal({ agent, onClose, onSave }) {
   const [skillInput, setSkillInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Skill importer state
+  const [importTab, setImportTab] = useState('manual') // 'manual' | 'url' | 'clawhub'
+  const [importUrl, setImportUrl] = useState('')
+  const [importSlug, setImportSlug] = useState('')
+  const [importSearch, setImportSearch] = useState('')
+  const [importResults, setImportResults] = useState([])
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -64,6 +79,60 @@ export default function AgentModal({ agent, onClose, onSave }) {
 
   const removeSkill = (s) => set('skills', form.skills.filter(x => x !== s))
 
+  // Import from URL
+  const handleImportUrl = async () => {
+    if (!importUrl.trim()) return
+    setImporting(true)
+    setImportMsg('')
+    try {
+      const r = await fetch('/api/skills/preview?url=' + encodeURIComponent(importUrl))
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error)
+      const newSkills = [...new Set([...form.skills, ...d.instructions])]
+      set('skills', newSkills)
+      setImportMsg(`✅ Added ${d.instructions.length} instructions from "${d.name}"`)
+      setImportUrl('')
+    } catch (e) {
+      setImportMsg('❌ ' + e.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // Search clawhub
+  const handleSearchClawhub = async () => {
+    if (!importSearch.trim()) return
+    setImporting(true)
+    setImportMsg('')
+    try {
+      const r = await fetch('/api/skills/search?q=' + encodeURIComponent(importSearch) + '&limit=8')
+      const d = await r.json()
+      setImportResults(d.results || [])
+      if (!d.results?.length) setImportMsg('No results found')
+    } catch (e) {
+      setImportMsg('❌ ' + e.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleImportSlug = async (slug) => {
+    setImporting(true)
+    setImportMsg('')
+    try {
+      const r = await fetch('/api/skills/preview?slug=' + encodeURIComponent(slug))
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error)
+      const newSkills = [...new Set([...form.skills, ...d.instructions])]
+      set('skills', newSkills)
+      setImportMsg(`✅ Added ${d.instructions.length} instructions from "${d.name}"`)
+    } catch (e) {
+      setImportMsg('❌ ' + e.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const inputStyle = {
     width: '100%', background: 'var(--card2)', border: '1px solid var(--border2)',
     color: 'var(--text)', fontFamily: 'var(--font)', fontSize: 13,
@@ -78,7 +147,7 @@ export default function AgentModal({ agent, onClose, onSave }) {
     }} onClick={onClose}>
       <div className="modal" style={{
         background: 'var(--card)', border: '1px solid var(--border2)',
-        borderRadius: 14, width: 520, maxHeight: '85vh',
+        borderRadius: 14, width: 540, maxHeight: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }} onClick={e => e.stopPropagation()}>
         {/* Header */}
@@ -114,10 +183,13 @@ export default function AgentModal({ agent, onClose, onSave }) {
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Provider</label>
                   <select value={form.provider} onChange={e => set('provider', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                    {['copilot', 'claude', 'gemini', 'openai', 'openrouter', 'ollama'].map(p => (
-                      <option key={p} value={p}>{p}</option>
+                    {PROVIDERS.map(p => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
                     ))}
                   </select>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
+                    {PROVIDERS.find(p => p.id === form.provider)?.note}
+                  </div>
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Model</label>
@@ -132,7 +204,7 @@ export default function AgentModal({ agent, onClose, onSave }) {
               </div>
               {form.provider !== 'copilot' && (
                 <div>
-                  <label style={labelStyle}>API Key</label>
+                  <label style={labelStyle}>API Key <span style={{ color: 'var(--muted)' }}>(leave empty to use env var)</span></label>
                   <input type="password" value={form.apiKey} onChange={e => set('apiKey', e.target.value)} placeholder="sk-..." style={inputStyle} />
                 </div>
               )}
@@ -157,15 +229,18 @@ export default function AgentModal({ agent, onClose, onSave }) {
 
           {tab === 'skills' && (
             <>
+              {/* Manual add */}
               <div>
-                <label style={labelStyle}>Skills / Capabilities</label>
-                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>Define what this agent can do or specializes in.</p>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <label style={labelStyle}>Skills / Instructions</label>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                  Specific instructions injected into every prompt. Write in <strong style={{ color: 'var(--accent2)' }}>English</strong>.
+                </p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
                   <input
                     value={skillInput}
                     onChange={e => setSkillInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addSkill()}
-                    placeholder="e.g. code review, data analysis..."
+                    placeholder="e.g. Always provide complete, runnable code examples"
                     style={{ ...inputStyle, flex: 1 }}
                   />
                   <button onClick={addSkill} style={{ ...btnPrimary, padding: '8px 14px' }}>Add</button>
@@ -175,15 +250,91 @@ export default function AgentModal({ agent, onClose, onSave }) {
                     <span key={s} style={{
                       background: 'var(--accent-glow)', color: 'var(--accent2)',
                       border: '1px solid rgba(124,127,245,.3)',
-                      borderRadius: 20, padding: '3px 10px', fontSize: 12,
-                      display: 'flex', alignItems: 'center', gap: 6,
+                      borderRadius: 6, padding: '4px 10px', fontSize: 11,
+                      display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%',
                     }}>
-                      {s}
-                      <button onClick={() => removeSkill(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 14, padding: 0 }}>×</button>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s}</span>
+                      <button onClick={() => removeSkill(s)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 14, padding: 0, flexShrink: 0 }}>×</button>
                     </span>
                   ))}
-                  {form.skills.length === 0 && <span style={{ color: 'var(--muted)', fontSize: 12 }}>No skills defined yet.</span>}
+                  {form.skills.length === 0 && <span style={{ color: 'var(--muted)', fontSize: 12 }}>No skills yet.</span>}
                 </div>
+              </div>
+
+              {/* Import from ClawHub/URL */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  🦞 Import from ClawHub
+                  <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400 }}>or SKILL.md URL</span>
+                </div>
+
+                {/* Sub-tabs */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+                  {[['url', '🔗 URL'], ['clawhub', '🔍 Search']].map(([id, label]) => (
+                    <button key={id} onClick={() => setImportTab(id)} style={{
+                      padding: '4px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 5,
+                      background: importTab === id ? 'var(--accent-glow)' : 'transparent',
+                      border: `1px solid ${importTab === id ? 'var(--accent)' : 'var(--border2)'}`,
+                      color: importTab === id ? 'var(--accent)' : 'var(--muted)',
+                    }}>{label}</button>
+                  ))}
+                </div>
+
+                {importTab === 'url' && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      value={importUrl}
+                      onChange={e => setImportUrl(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleImportUrl()}
+                      placeholder="GitHub URL or clawhub raw URL to SKILL.md"
+                      style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+                    />
+                    <button onClick={handleImportUrl} disabled={importing} style={{ ...btnPrimary, padding: '8px 12px', fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {importing ? '...' : 'Import'}
+                    </button>
+                  </div>
+                )}
+
+                {importTab === 'clawhub' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        value={importSearch}
+                        onChange={e => setImportSearch(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSearchClawhub()}
+                        placeholder="Search ClawHub skills (e.g. web-search, coding)"
+                        style={{ ...inputStyle, flex: 1, fontSize: 12 }}
+                      />
+                      <button onClick={handleSearchClawhub} disabled={importing} style={{ ...btnPrimary, padding: '8px 12px', fontSize: 11, whiteSpace: 'nowrap' }}>
+                        {importing ? '...' : '🔍 Search'}
+                      </button>
+                    </div>
+                    {importResults.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+                        {importResults.map(r => (
+                          <div key={r.slug} style={{
+                            display: 'flex', alignItems: 'center', gap: 8,
+                            background: 'var(--card2)', borderRadius: 6, padding: '6px 10px',
+                          }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{r.name}</div>
+                              <div style={{ fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</div>
+                            </div>
+                            <button onClick={() => handleImportSlug(r.slug)} disabled={importing} style={{ ...btnPrimary, padding: '4px 8px', fontSize: 10 }}>
+                              + Add
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {importMsg && (
+                  <div style={{ fontSize: 11, marginTop: 6, color: importMsg.startsWith('✅') ? 'var(--green)' : 'var(--red)' }}>
+                    {importMsg}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -192,7 +343,7 @@ export default function AgentModal({ agent, onClose, onSave }) {
             <>
               <div>
                 <label style={labelStyle}>Context Notes</label>
-                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Notes injected into every conversation as context.</p>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Accumulated knowledge injected into every conversation.</p>
                 <textarea
                   value={form.contextNotes}
                   onChange={e => set('contextNotes', e.target.value)}
@@ -203,7 +354,9 @@ export default function AgentModal({ agent, onClose, onSave }) {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" id="autoCtx" checked={form.autoUpdateContext} onChange={e => set('autoUpdateContext', e.target.checked)} />
-                <label htmlFor="autoCtx" style={{ fontSize: 12, color: 'var(--muted2)', cursor: 'pointer' }}>Auto-update context after each conversation</label>
+                <label htmlFor="autoCtx" style={{ fontSize: 12, color: 'var(--muted2)', cursor: 'pointer' }}>
+                  Auto-update context after each conversation
+                </label>
               </div>
             </>
           )}

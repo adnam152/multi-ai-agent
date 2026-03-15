@@ -1,17 +1,12 @@
 /**
  * agents.js — Manage specialized AI agents
  *
- * Each agent has:
- *   id, name, description, model, provider, systemPrompt
- *   apiKey?, apiKeyVar?, active
- *   skills[]        ← danh sách skill/instruction riêng của agent
- *   contextNotes    ← notes/context tích lũy qua các lần dùng
- *   autoUpdateContext ← tự động cập nhật contextNotes sau mỗi reply
+ * On first run, no default agents are seeded.
+ * Users create agents manually via the UI or by asking Brain in chat.
  *
- * Providers: ollama | claude | gemini | openrouter | openai | copilot
+ * Providers: copilot | claude | gemini | openrouter | openai
  *
- * Copilot provider: gọi copilot-api local proxy tại http://localhost:4141
- *   Không cần API key — dùng chung auth của copilot-api
+ * Note: "ollama" provider removed — use "copilot" as the local-first option.
  */
 
 const db = require('./db');
@@ -21,42 +16,6 @@ const { APP_CONSTANTS, AGENT_CONSTANTS } = require('./constants');
 
 let agents = [];
 
-// ─── Default built-in agents ──────────────────────────────────────────────────
-
-const DEFAULT_AGENTS = [
-  {
-    id: 'dev-agent',
-    name: 'Dev Agent',
-    description: 'Specialized in coding, debugging, architecture, and technical tasks',
-    provider: 'copilot',
-    model: 'gpt-4.1',
-    systemPrompt: 'You are an expert software engineer. Help with code, debugging, architecture decisions, and technical explanations. Be precise and provide working examples.',
-    skills: [
-      'Luôn cung cấp code examples đầy đủ, có thể chạy được',
-      'Giải thích ngắn gọn trước khi code',
-      'Ưu tiên Node.js/JavaScript trừ khi yêu cầu ngôn ngữ khác',
-    ],
-    contextNotes: '',
-    autoUpdateContext: true,
-    active: true,
-    createdAt: Date.now(),
-  },
-  {
-    id: 'search-agent',
-    name: 'Search Agent',
-    description: 'Specialized in web search, research, and finding current information',
-    provider: 'gemini',
-    model: 'gemini-2.0-flash',
-    systemPrompt: 'You are a research assistant. Help find information, summarize topics, and provide well-sourced answers. Prioritize accuracy and recency.',
-    skills: [],
-    contextNotes: '',
-    autoUpdateContext: false,
-    apiKeyVar: 'GEMINI_API_KEY',
-    active: true,
-    createdAt: Date.now(),
-  },
-];
-
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
 async function load() {
@@ -64,16 +23,20 @@ async function load() {
   if (error) throw new Error(`[agents] Failed to load agents: ${error.message}`);
 
   if (!data || data.length === 0) {
-    agents = DEFAULT_AGENTS;
-    await Promise.all(DEFAULT_AGENTS.map(agent =>
-      db.from('agents').upsert({ id: agent.id, data: agent, updated_at: new Date().toISOString() })
-    ));
-    logger.info('system', `Default agents seeded to Supabase: ${agents.length}`);
+    // No default agents — start fresh
+    agents = [];
+    logger.info('system', 'No agents found in Supabase. Create agents via UI or ask Brain.');
     return;
   }
 
   agents = data.map(r => ({ ...r.data, id: r.id }));
-  agents = agents.map(a => ({ skills: [], contextNotes: '', autoUpdateContext: false, ...a }));
+  // Ensure all agents have the required fields with defaults
+  agents = agents.map(a => ({
+    skills: [],
+    contextNotes: '',
+    autoUpdateContext: false,
+    ...a,
+  }));
   logger.info('system', `Agents loaded from Supabase: ${agents.length}`);
 }
 
@@ -167,7 +130,7 @@ function resolveApiKey(agent, defaultEnvVar) {
   return process.env[defaultEnvVar] || null;
 }
 
-// ─── Provider: GitHub Copilot (via copilot-api local proxy) ──────────────────
+// ─── Provider: GitHub Copilot ─────────────────────────────────────────────────
 
 async function callCopilot({ model, messages, onToken, onDone, onError }) {
   const COPILOT_BASE = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
@@ -194,24 +157,31 @@ async function callCopilot({ model, messages, onToken, onDone, onError }) {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';
+    let doneFired = false;
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       const text = decoder.decode(value);
-      const lines = text.split('\n').filter(l => l.startsWith('data: ') && !l.includes('[DONE]'));
+      const lines = text.split('\n').filter(l => l.startsWith('data: '));
 
       for (const line of lines) {
+        if (line.includes('[DONE]')) {
+          if (!doneFired && fullContent) { doneFired = true; onDone(fullContent); }
+          continue;
+        }
         try {
           const data = JSON.parse(line.slice(6));
           const token = data.choices?.[0]?.delta?.content || '';
           if (token) { fullContent += token; onToken(token); }
-          if (data.choices?.[0]?.finish_reason === 'stop') onDone(fullContent);
+          if (data.choices?.[0]?.finish_reason === 'stop') {
+            if (!doneFired) { doneFired = true; onDone(fullContent); }
+          }
         } catch { }
       }
     }
 
-    if (fullContent) onDone(fullContent);
+    if (!doneFired && fullContent) onDone(fullContent);
   } catch (e) {
     onError(e);
   }
@@ -233,7 +203,6 @@ async function callClaude({ model, messages, apiKey, onToken, onDone, onError })
         'Content-Type': 'application/json',
         'x-api-key': key,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'messages-2023-12-15',
       },
       body: JSON.stringify({
         model: model || 'claude-sonnet-4-5',
@@ -323,23 +292,9 @@ async function callGemini({ model, messages, apiKey, onToken, onDone, onError })
 
 // ─── Provider: OpenRouter ─────────────────────────────────────────────────────
 
-const OR_FREE_MODELS = [
-  'google/gemini-2.0-flash-exp:free', 'meta-llama/llama-3.1-8b-instruct:free',
-  'mistralai/mistral-7b-instruct:free',
-];
-
-function selectAutoModel(messages) {
-  const totalLen = messages.reduce((a, m) => a + (m.content?.length || 0), 0);
-  if (totalLen > AGENT_CONSTANTS.OPENROUTER_AUTO_MODEL_THRESHOLD) return 'google/gemini-flash-1.5';
-  return OR_FREE_MODELS[0];
-}
-
-async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onError, onModelSelected }) {
+async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onError }) {
   const key = resolveApiKey({ apiKey }, 'OPENROUTER_API_KEY');
   if (!key) { onError(new Error('OPENROUTER_API_KEY not set')); return; }
-
-  const selectedModel = model === 'auto' ? selectAutoModel(messages) : model;
-  if (onModelSelected) onModelSelected(selectedModel);
 
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -350,7 +305,7 @@ async function callOpenRouter({ model, messages, apiKey, onToken, onDone, onErro
         'HTTP-Referer': process.env.OPENROUTER_REFERER || APP_CONSTANTS.DEFAULT_OPENROUTER_REFERER,
         'X-Title': 'Brain OS',
       },
-      body: JSON.stringify({ model: selectedModel, messages, stream: true, max_tokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS }),
+      body: JSON.stringify({ model, messages, stream: true, max_tokens: AGENT_CONSTANTS.PROVIDER_MAX_TOKENS }),
     });
 
     if (!res.ok) { onError(new Error(`OpenRouter: ${res.status}`)); return; }
@@ -432,7 +387,6 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
     fullSystemPrompt += '\n\n## Context Notes (accumulated knowledge)\n' + agent.contextNotes;
   }
 
-  // Assemble context from memory (per-agent history)
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
     agentId,
@@ -448,14 +402,11 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
 
   logger.info(`agent:${agent.name}`, `Running. Context: ${assembled.stats.selectedMessages} msgs`);
 
-  // Store user input in this agent's memory
   memory.store('user', userInput, agentId);
 
   const wrappedDone = (content) => {
-    // Store response in agent's memory
     memory.store('assistant', content, agentId);
 
-    // Auto-update context notes if enabled
     if (agent.autoUpdateContext && content.length > AGENT_CONSTANTS.AUTO_UPDATE_MIN_RESPONSE_LENGTH) {
       const summary = `Q: ${userInput.slice(0, AGENT_CONSTANTS.AUTO_UPDATE_QUESTION_PREVIEW_LENGTH)} → A: ${content.slice(0, AGENT_CONSTANTS.AUTO_UPDATE_ANSWER_PREVIEW_LENGTH)}`;
       updateContextNotes(agentId, summary);
@@ -464,39 +415,30 @@ async function runAgent({ agentId, userInput, onToken, onDone, onError }) {
     onDone(content, assembled.stats);
   };
 
-  // Dispatch to provider
-  const defaultEnvVars = {
-    claude: 'ANTHROPIC_API_KEY',
-    gemini: 'GEMINI_API_KEY',
-    openrouter: 'OPENROUTER_API_KEY',
-    openai: 'OPENAI_API_KEY',
-    copilot: null, // no key needed
-  };
-
-  const apiKey = defaultEnvVars[agent.provider] !== null
-    ? resolveApiKey(agent, defaultEnvVars[agent.provider] || '')
-    : null;
-
   const dispatch = {
     claude: callClaude,
     gemini: callGemini,
     openrouter: callOpenRouter,
     openai: callOpenAI,
     copilot: callCopilot,
-    ollama: async (opts) => {
-      // Fallback: use brain's copilot
-      await callCopilot({ ...opts });
-    },
   };
 
   const fn = dispatch[agent.provider];
-  if (!fn) { onError(new Error(`Unknown provider: ${agent.provider}`)); return; }
+  if (!fn) { onError(new Error(`Unknown provider: ${agent.provider}. Valid: copilot, claude, gemini, openrouter, openai`)); return; }
 
-  const onModelSelected = (m) => {
-    logger.info(`agent:${agent.name}`, `Auto-selected model: ${m}`);
+  const defaultEnvVars = {
+    claude: 'ANTHROPIC_API_KEY',
+    gemini: 'GEMINI_API_KEY',
+    openrouter: 'OPENROUTER_API_KEY',
+    openai: 'OPENAI_API_KEY',
+    copilot: null,
   };
 
-  await fn({ model: agent.model, messages, apiKey, onToken, onDone: wrappedDone, onError, onModelSelected });
+  const apiKey = defaultEnvVars[agent.provider] !== null
+    ? resolveApiKey(agent, defaultEnvVars[agent.provider] || '')
+    : null;
+
+  await fn({ model: agent.model, messages, apiKey, onToken, onDone: wrappedDone, onError });
 }
 
 module.exports = {
