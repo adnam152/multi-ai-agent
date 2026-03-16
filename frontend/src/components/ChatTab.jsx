@@ -41,10 +41,11 @@ function fmtDate(ts) {
 // ── Session sidebar ────────────────────────────────────────────────────────────
 
 function SessionPanel({ sessions, activeSessionId, onSelect, onCreate, onRename, onDelete }) {
-  const [editingId, setEditingId]   = useState(null)
-  const [editName, setEditName]     = useState('')
-  const [creating, setCreating]     = useState(false)
-  const [newName, setNewName]       = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [contextSession, setContextSession] = useState(null)
   const editRef = useRef(null)
 
   useEffect(() => {
@@ -75,7 +76,7 @@ function SessionPanel({ sessions, activeSessionId, onSelect, onCreate, onRename,
     <div style={{
       width: 200, minWidth: 200, borderRight: '1px solid var(--border)',
       background: 'var(--sidebar)', display: 'flex', flexDirection: 'column',
-      overflow: 'hidden',
+      overflow: 'hidden', position: 'relative',
     }}>
       {/* Header */}
       <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -107,21 +108,20 @@ function SessionPanel({ sessions, activeSessionId, onSelect, onCreate, onRename,
         {sessions.map(s => {
           const isActive = s.id === activeSessionId
           const isEditing = editingId === s.id
+          const hasCtx = !!s.systemContext?.trim()  // ← mới
 
           return (
             <div
               key={s.id}
               onClick={() => !isEditing && onSelect(s.id)}
+              className="session-row"
               style={{
                 padding: '9px 12px', cursor: 'pointer',
                 background: isActive ? 'var(--accent-glow)' : 'transparent',
                 borderLeft: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
                 display: 'flex', alignItems: 'center', gap: 8,
-                transition: 'background .1s',
                 borderBottom: '1px solid var(--border)',
               }}
-              onMouseEnter={e => !isActive && (e.currentTarget.style.background = 'rgba(255,255,255,.03)')}
-              onMouseLeave={e => !isActive && (e.currentTarget.style.background = 'transparent')}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 {isEditing ? (
@@ -129,15 +129,39 @@ function SessionPanel({ sessions, activeSessionId, onSelect, onCreate, onRename,
                     ref={editRef}
                     value={editName}
                     onChange={e => setEditName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingId(null) }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitEdit()
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
                     onBlur={commitEdit}
                     onClick={e => e.stopPropagation()}
-                    style={{ width: '100%', background: 'var(--card)', border: '1px solid var(--accent)', color: 'var(--text)', fontFamily: 'var(--font)', fontSize: 12, padding: '2px 5px', borderRadius: 4, outline: 'none' }}
+                    style={{
+                      width: '100%', background: 'var(--card)',
+                      border: '1px solid var(--accent)', color: 'var(--text)',
+                      fontFamily: 'var(--font)', fontSize: 12,
+                      padding: '2px 5px', borderRadius: 4, outline: 'none',
+                    }}
                   />
                 ) : (
                   <>
-                    <div style={{ fontSize: 12, color: isActive ? 'var(--accent2)' : 'var(--text)', fontWeight: isActive ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{
+                      fontSize: 12,
+                      color: isActive ? 'var(--accent2)' : 'var(--text)',
+                      fontWeight: isActive ? 600 : 400,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
                       {s.name}
+                      {/* dot nếu có context */}
+                      {hasCtx && (
+                        <span
+                          title="Has session context"
+                          style={{
+                            width: 5, height: 5, borderRadius: '50%',
+                            background: 'var(--accent)', flexShrink: 0,
+                          }}
+                        />
+                      )}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--mono)', marginTop: 1 }}>
                       {fmtDate(s.updatedAt || s.createdAt)}
@@ -146,22 +170,49 @@ function SessionPanel({ sessions, activeSessionId, onSelect, onCreate, onRename,
                 )}
               </div>
 
-              {/* Actions (on hover or active) */}
+              {/* Action buttons */}
               {!isEditing && (
-                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}
-                  onClick={e => e.stopPropagation()}>
+                <div
+                  style={{ display: 'flex', gap: 2, flexShrink: 0 }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* ← nút context mới */}
+                  <button
+                    onClick={() => setContextSession(s)}
+                    title="Set session context"
+                    className="session-action"
+                    style={{
+                      background: hasCtx ? 'var(--accent-glow)' : 'none',
+                      border: 'none', cursor: 'pointer',
+                      color: hasCtx ? 'var(--accent)' : 'var(--muted)',
+                      fontSize: 11, padding: '2px 3px', borderRadius: 3,
+                      opacity: isActive ? 1 : 0,
+                    }}
+                  >⚙</button>
+
                   <button
                     onClick={e => startEdit(s, e)}
                     title="Rename"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 12, padding: '2px 3px', borderRadius: 3, opacity: isActive ? 1 : 0 }}
                     className="session-action"
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--muted)', fontSize: 12,
+                      padding: '2px 3px', borderRadius: 3,
+                      opacity: isActive ? 1 : 0,
+                    }}
                   >✏️</button>
+
                   {!s.pinned && (
                     <button
                       onClick={() => onDelete(s.id)}
                       title="Delete session"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 12, padding: '2px 3px', borderRadius: 3, opacity: isActive ? 1 : 0 }}
                       className="session-action"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--muted)', fontSize: 12,
+                        padding: '2px 3px', borderRadius: 3,
+                        opacity: isActive ? 1 : 0,
+                      }}
                     >🗑</button>
                   )}
                 </div>
@@ -170,6 +221,18 @@ function SessionPanel({ sessions, activeSessionId, onSelect, onCreate, onRename,
           )
         })}
       </div>
+
+      {/* Context popover */}
+      {contextSession && (
+        <SessionContextPopover
+          session={contextSession}
+          onClose={() => setContextSession(null)}
+          onSave={async (id, systemContext) => {
+            await onUpdateContext(id, systemContext)
+            setContextSession(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -181,11 +244,11 @@ export default function ChatTab({
   currentAgentId, setCurrentAgentId, wsReady, isHistoryLoading, setIsHistoryLoading,
 }) {
   const queryClient = useQueryClient()
-  const [input, setInput]             = useState('')
+  const [input, setInput] = useState('')
   const [isSummarizing, setIsSummarizing] = useState(false)
   const [activeSessionId, setActiveSessionId] = useState('brain')
   const messagesEndRef = useRef(null)
-  const textareaRef    = useRef(null)
+  const textareaRef = useRef(null)
 
   // Sessions query
   const { data: sessions = [], refetch: refetchSessions } = useQuery({
@@ -278,6 +341,15 @@ export default function ChatTab({
     if (activeSessionId === id) setActiveSessionId('brain')
   }
 
+  const handleUpdateSessionContext = async (id, systemContext) => {
+    await fetch(`/api/sessions/${id}/context`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ systemContext }),
+    })
+    refetchSessions()
+  }
+
   const clearChat = () => {
     if (!confirm('Clear messages in this session?')) return
     send({ type: 'clear_chat', agentId: effectiveAgentId })
@@ -325,6 +397,7 @@ export default function ChatTab({
         onCreate={handleCreateSession}
         onRename={handleRenameSession}
         onDelete={handleDeleteSession}
+        onUpdateContext={handleUpdateSessionContext}
       />
 
       {/* Chat area */}
@@ -365,10 +438,10 @@ export default function ChatTab({
             >
               {isSummarizing
                 ? <span style={{ display: 'inline-flex', gap: 3 }}>
-                    <div className="typing-dot" style={{ width: 4, height: 4 }} />
-                    <div className="typing-dot" style={{ width: 4, height: 4 }} />
-                    <div className="typing-dot" style={{ width: 4, height: 4 }} />
-                  </span>
+                  <div className="typing-dot" style={{ width: 4, height: 4 }} />
+                  <div className="typing-dot" style={{ width: 4, height: 4 }} />
+                  <div className="typing-dot" style={{ width: 4, height: 4 }} />
+                </span>
                 : '📄'
               } Compact
             </button>
@@ -444,12 +517,12 @@ function BotAvatar({ avatar }) {
 }
 
 const USER_MSG_LINE_HEIGHT = 1.6
-const USER_MSG_MAX_LINES   = 5
-const USER_MSG_MAX_HEIGHT  = `${USER_MSG_MAX_LINES * USER_MSG_LINE_HEIGHT}em`
+const USER_MSG_MAX_LINES = 5
+const USER_MSG_MAX_HEIGHT = `${USER_MSG_MAX_LINES * USER_MSG_LINE_HEIGHT}em`
 
 function UserMessage({ content, timestamp }) {
   const [expanded, setExpanded] = useState(false)
-  const [overflow, setOverflow]  = useState(false)
+  const [overflow, setOverflow] = useState(false)
   const textRef = useRef(null)
 
   useEffect(() => {
@@ -562,3 +635,140 @@ function TypingIndicator({ avatar }) {
 
 const btnGhost = { padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid var(--border2)', color: 'var(--muted2)', display: 'inline-flex', alignItems: 'center', gap: 6 }
 const btnPrimary = { padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'var(--accent)', border: '1px solid var(--accent)', color: '#fff' }
+
+// ── Session context popover ────────────────────────────────────────────────────
+
+function SessionContextPopover({ session, onClose, onSave }) {
+  const [value, setValue] = useState(session.systemContext || '')
+  const [saving, setSaving] = useState(false)
+  const ref = useRef(null)
+
+  // Close on click outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  const handleSave = async () => {
+    setSaving(true)
+    await onSave(session.id, value)
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'fixed',
+        left: 208,   // width of session panel + 8px gap
+        top: '50%',
+        transform: 'translateY(-50%)',
+        zIndex: 200,
+        width: 320,
+        background: 'var(--card)',
+        border: '1px solid var(--border2)',
+        borderRadius: 10,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0,
+        overflow: 'hidden',
+        animation: 'modal-in 0.12s ease',
+      }}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div style={{
+        padding: '10px 14px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+            Session Context
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>
+            {session.name}
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 16, lineHeight: 1 }}
+        >×</button>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
+          Injected into Brain's system prompt for this session only.
+          <br />E.g. <em style={{ color: 'var(--muted2)' }}>"Dự án React + Supabase, trả lời bằng tiếng Việt"</em>
+        </div>
+        <textarea
+          autoFocus
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          placeholder="Describe the purpose or context of this session..."
+          rows={5}
+          style={{
+            width: '100%',
+            background: 'var(--card2)',
+            border: '1px solid var(--border2)',
+            color: 'var(--text)',
+            fontFamily: 'var(--font)',
+            fontSize: 12,
+            padding: '8px 10px',
+            borderRadius: 7,
+            outline: 'none',
+            resize: 'vertical',
+            lineHeight: 1.5,
+          }}
+          onFocus={e => (e.target.style.borderColor = 'var(--accent)')}
+          onBlur={e => (e.target.style.borderColor = 'var(--border2)')}
+        />
+        {value.length > 0 && (
+          <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'right' }}>
+            {value.length} chars
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        padding: '8px 14px',
+        borderTop: '1px solid var(--border)',
+        display: 'flex', gap: 8, justifyContent: 'flex-end',
+      }}>
+        <button
+          onClick={() => { setValue(''); }}
+          style={{
+            padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+            cursor: 'pointer', background: 'transparent',
+            border: '1px solid var(--border2)', color: 'var(--muted2)',
+          }}
+        >Clear</button>
+        <button
+          onClick={onClose}
+          style={{
+            padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+            cursor: 'pointer', background: 'transparent',
+            border: '1px solid var(--border2)', color: 'var(--muted2)',
+          }}
+        >Cancel</button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            padding: '5px 14px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+            cursor: 'pointer', background: 'var(--accent)',
+            border: 'none', color: '#fff',
+            opacity: saving ? 0.6 : 1,
+          }}
+        >{saving ? 'Saving...' : 'Save'}</button>
+      </div>
+    </div>
+  )
+}

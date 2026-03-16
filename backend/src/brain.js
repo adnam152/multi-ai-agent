@@ -12,39 +12,39 @@
  */
 
 const logger = require('./logger');
-const tools  = require('./tools');
+const tools = require('./tools');
 const memory = require('./memory');
 const { APP_CONSTANTS, BRAIN_CONSTANTS } = require('./constants');
 
-const COPILOT_BASE   = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
-const COPILOT_CHAT   = `${COPILOT_BASE}/v1/chat/completions`;
+const COPILOT_BASE = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
+const COPILOT_CHAT = `${COPILOT_BASE}/v1/chat/completions`;
 const COPILOT_MODELS = `${COPILOT_BASE}/v1/models`;
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const config = {
   available: false,
-  model:     'gpt-5-mini',
-  models:    [],
-  provider:  'copilot',
-  baseUrl:   COPILOT_BASE,
+  model: 'gpt-5-mini',
+  models: [],
+  provider: 'copilot',
+  baseUrl: COPILOT_BASE,
 };
 
 const KNOWN_MODELS = [
-  { id: 'gpt-5-mini',            quota: 'free', label: 'GPT-5 Mini (Free)' },
-  { id: 'gpt-4.1-mini',          quota: 'free', label: 'GPT-4.1 Mini (Free)' },
-  { id: 'gpt-4o-mini',           quota: 'free', label: 'GPT-4o Mini (Free)' },
-  { id: 'gemini-2.0-flash',      quota: 'free', label: 'Gemini 2.0 Flash (Free)' },
-  { id: 'claude-haiku-4-5',      quota: 'x0.33', label: 'Claude Haiku 4.5 (x0.33)' },
-  { id: 'gpt-4.1',               quota: 'x1',   label: 'GPT-4.1 (x1)' },
-  { id: 'gpt-4o',                quota: 'x1',   label: 'GPT-4o (x1)' },
-  { id: 'gpt-5.1',               quota: 'x1',   label: 'GPT-5.1 (x1)' },
-  { id: 'claude-sonnet-4.5',     quota: 'x1',   label: 'Claude Sonnet 4.5 (x1)' },
-  { id: 'gemini-2.5-pro',        quota: 'x1',   label: 'Gemini 2.5 Pro (x1)' },
-  { id: 'gpt-5.1-codex',         quota: 'x1',   label: 'GPT-5.1 Codex (x1)' },
-  { id: 'o1-mini',               quota: 'x3',   label: 'o1 Mini (x3)' },
-  { id: 'o3-mini',               quota: 'x3',   label: 'o3 Mini (x3)' },
-  { id: 'o1',                    quota: 'x5',   label: 'o1 (x5)' },
+  { id: 'gpt-5-mini', quota: 'free', label: 'GPT-5 Mini (Free)' },
+  { id: 'gpt-4.1-mini', quota: 'free', label: 'GPT-4.1 Mini (Free)' },
+  { id: 'gpt-4o-mini', quota: 'free', label: 'GPT-4o Mini (Free)' },
+  { id: 'gemini-2.0-flash', quota: 'free', label: 'Gemini 2.0 Flash (Free)' },
+  { id: 'claude-haiku-4-5', quota: 'x0.33', label: 'Claude Haiku 4.5 (x0.33)' },
+  { id: 'gpt-4.1', quota: 'x1', label: 'GPT-4.1 (x1)' },
+  { id: 'gpt-4o', quota: 'x1', label: 'GPT-4o (x1)' },
+  { id: 'gpt-5.1', quota: 'x1', label: 'GPT-5.1 (x1)' },
+  { id: 'claude-sonnet-4.5', quota: 'x1', label: 'Claude Sonnet 4.5 (x1)' },
+  { id: 'gemini-2.5-pro', quota: 'x1', label: 'Gemini 2.5 Pro (x1)' },
+  { id: 'gpt-5.1-codex', quota: 'x1', label: 'GPT-5.1 Codex (x1)' },
+  { id: 'o1-mini', quota: 'x3', label: 'o1 Mini (x3)' },
+  { id: 'o3-mini', quota: 'x3', label: 'o3 Mini (x3)' },
+  { id: 'o1', quota: 'x5', label: 'o1 (x5)' },
 ];
 
 // ─── Persistent Brain skills ───────────────────────────────────────────────────
@@ -77,7 +77,7 @@ async function setSkills(skills) {
   try {
     const db = require('./db');
     await db.from('config').upsert({
-      key:   'brain_skills',
+      key: 'brain_skills',
       value: JSON.stringify(brainSkills),
     });
     logger.info('brain', `Saved ${brainSkills.length} skill(s)`);
@@ -189,7 +189,7 @@ async function checkOllama() {
         const known = KNOWN_MODELS.find(k => k.id === m.id);
         return known || { id: m.id, quota: 'x1', label: m.id };
       });
-      config.models    = discovered.length ? discovered : KNOWN_MODELS;
+      config.models = discovered.length ? discovered : KNOWN_MODELS;
       config.available = true;
       logger.info('brain', `✅ copilot-api connected — model: ${config.model}`);
       return true;
@@ -233,10 +233,10 @@ async function fetchWithRetry(url, opts, maxRetries = 2) {
 // Prevents payload bloat that causes timeouts on copilot-api
 
 function pruneLoopMessages(messages) {
-  const TOOL_MAX   = 1500;
-  const HEAD       = 600;
-  const TAIL       = 400;
-  const RESP_MAX   = 800;
+  const TOOL_MAX = 1500;
+  const HEAD = 600;
+  const TAIL = 400;
+  const RESP_MAX = 800;
   const SEARCH_MAX = 5;
 
   return messages.map(m => {
@@ -276,19 +276,19 @@ function pruneLoopMessages(messages) {
 
 async function callWithTools(messages, model) {
   const useModel = model || config.model;
-  const pruned   = pruneLoopMessages(messages);
+  const pruned = pruneLoopMessages(messages);
 
   logger.debug('brain', `callWithTools: ${pruned.length} msgs, payload ~${JSON.stringify(pruned).length} chars`);
 
   const res = await fetchWithRetry(COPILOT_CHAT, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model:      useModel,
-      messages:   pruned,
-      tools:      tools.TOOL_DEFINITIONS,
+      model: useModel,
+      messages: pruned,
+      tools: tools.TOOL_DEFINITIONS,
       tool_choice: 'auto',
-      stream:     false,
+      stream: false,
       max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS,
     }),
   });
@@ -305,16 +305,16 @@ async function callWithTools(messages, model) {
 
 async function streamChat({ messages, model, onToken, onDone, onError }) {
   const useModel = model || config.model;
-  const pruned   = pruneLoopMessages(messages);
+  const pruned = pruneLoopMessages(messages);
 
   try {
     const res = await fetchWithRetry(COPILOT_CHAT, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model:      useModel,
-        messages:   pruned,
-        stream:     true,
+        model: useModel,
+        messages: pruned,
+        stream: true,
         max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS,
       }),
     });
@@ -324,9 +324,9 @@ async function streamChat({ messages, model, onToken, onDone, onError }) {
       throw new Error(`Stream error ${res.status}: ${err.slice(0, 200)}`);
     }
 
-    const reader      = res.body.getReader();
-    const decoder     = new TextDecoder();
-    let   fullContent = '';
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -355,12 +355,12 @@ async function call(messages, model = null) {
   const useModel = model || config.model;
   try {
     const res = await fetchWithRetry(COPILOT_CHAT, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model:      useModel,
+        model: useModel,
         messages,
-        stream:     false,
+        stream: false,
         max_tokens: BRAIN_CONSTANTS.CALL_MAX_TOKENS,
       }),
     });
@@ -403,17 +403,20 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
 
   const skillsSection = brainSkills.length > 0
     ? '\n\n## Persistent Brain Skills\n' +
-      brainSkills.map((s, i) => `${i + 1}. ${s}`).join('\n')
+    brainSkills.map((s, i) => `${i + 1}. ${s}`).join('\n')
     : '';
-
-  const fullSystemPrompt = BRAIN_SYSTEM + skillsSection + lessonsContext;
+    
+  const session = require('./sessions').getById(agentId)
+  const sessionCtx = session?.systemContext?.trim()
+    ? `\n\n## Session Context\n${session.systemContext}` : ''
+  const fullSystemPrompt = BRAIN_SYSTEM + skillsSection + sessionCtx + lessonsContext
 
   // Assemble prompt with context (head/tail preservation, token budget)
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
     agentId,
     systemPrompt: fullSystemPrompt,
-    tokenBudget:  BRAIN_CONSTANTS.TOKEN_BUDGET,
+    tokenBudget: BRAIN_CONSTANTS.TOKEN_BUDGET,
   });
 
   logger.debug('brain', `Chat start. agentId=${agentId}, ctx=${assembled.stats.selectedMessages} msgs, ~${assembled.stats.estimatedTokens} tokens`);
@@ -424,7 +427,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   const loopMessages = [
     { role: 'system', content: assembled.systemPrompt },
     ...assembled.context,
-    { role: 'user',   content: userInput },
+    { role: 'user', content: userInput },
   ];
 
   // ─── Tool calling loop ─────────────────────────────────────────────────────
@@ -449,8 +452,8 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
       return;
     }
 
-    const msg         = choice.message;
-    const hasTools    = msg.tool_calls?.length > 0;
+    const msg = choice.message;
+    const hasTools = msg.tool_calls?.length > 0;
 
     // ── No tool calls → final answer ─────────────────────────────────────────
     if (!hasTools) {
@@ -462,7 +465,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
         // Empty content — fall back to streaming
         await streamChat({
           messages: loopMessages,
-          model:    config.model,
+          model: config.model,
           onToken,
           onDone: (content) => {
             memory.store('assistant', content, agentId);
@@ -494,9 +497,9 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     // Execute all tool calls in parallel
     const results = await tools.executeToolsParallel(
       msg.tool_calls.map(tc => ({
-        id:       tc.id,
+        id: tc.id,
         function: {
-          name:      tc.function.name,
+          name: tc.function.name,
           arguments: typeof tc.function.arguments === 'string'
             ? JSON.parse(tc.function.arguments || '{}')
             : (tc.function.arguments || {}),
@@ -507,9 +510,9 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     // Append tool results
     msg.tool_calls.forEach((tc, i) => {
       loopMessages.push({
-        role:         'tool',
+        role: 'tool',
         tool_call_id: tc.id,
-        content:      JSON.stringify(results[i]),
+        content: JSON.stringify(results[i]),
       });
     });
     // Continue loop
@@ -519,7 +522,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   logger.warn('brain', `Tool loop limit (${MAX_LOOPS}) reached — forcing final stream`);
   await streamChat({
     messages: loopMessages,
-    model:    config.model,
+    model: config.model,
     onToken,
     onDone: (content) => {
       memory.store('assistant', content, agentId);
@@ -543,7 +546,7 @@ async function summarizeHistory(agentId = 'brain') {
     .join('\n');
 
   const result = await call([{
-    role:    'user',
+    role: 'user',
     content: `Summarize this conversation concisely in 4–6 bullet points. Preserve key facts, decisions, and user preferences:\n\n${text}`,
   }]);
 

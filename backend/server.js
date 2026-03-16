@@ -491,6 +491,15 @@ app.delete('/api/sessions/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+app.put('/api/sessions/:id/context', (req, res) => {
+  const { systemContext } = req.body
+  if (systemContext === undefined) return res.status(400).json({ error: 'systemContext required' })
+  const s = sessions.update(req.params.id, { systemContext })
+  if (!s) return res.status(404).json({ error: 'Not found' })
+  res.json({ ok: true, systemContext: s.systemContext })
+})
+
+
 // ─── WebSocket ─────────────────────────────────────────────────────────────────
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });

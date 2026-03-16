@@ -94,6 +94,7 @@ function create({ name }) {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     pinned: false,
+    systemContext: '',
   };
   sessions.unshift(session);
   persist(session);
