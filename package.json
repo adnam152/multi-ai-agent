@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Local AI Brain — Autonomous Agent Orchestration System",
   "scripts": {
-    "start": "node backend/server.js",
+    "start": "npm run build --prefix frontend && node backend/server.js",
     "dev:backend": "node --watch backend/server.js",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
