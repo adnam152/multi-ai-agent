@@ -69,3 +69,39 @@ CREATE POLICY "service_role_all" ON summaries FOR ALL USING (true);
 CREATE POLICY "service_role_all" ON logs FOR ALL USING (true);
 CREATE POLICY "service_role_all" ON config FOR ALL USING (true);
 CREATE POLICY "service_role_all" ON lessons FOR ALL USING (true);
+
+
+-- Brain OS — MCP Servers Migration
+-- Run in Supabase SQL Editor
+
+CREATE TABLE IF NOT EXISTS mcp_servers (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE mcp_servers ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON mcp_servers FOR ALL USING (true);
+
+-- Brain OS — Sessions Migration
+-- Run in Supabase SQL Editor
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON sessions FOR ALL USING (true);
+
+
+CREATE TABLE IF NOT EXISTS config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE config ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON config FOR ALL USING (true);

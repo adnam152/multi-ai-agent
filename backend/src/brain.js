@@ -1,179 +1,182 @@
 /**
- * brain.js — Orchestrator using GitHub Copilot (via copilot-api local proxy)
+ * brain.js — Central AI Orchestrator (Brain OS)
  *
- * Timeout fix (v2):
- *   - pruneLoopMessages(): shrink tool results in accumulated messages before each API call
- *   - callWithRetry(): retry on network timeout with exponential backoff
- *   - Max payload guard: hard cap on total chars sent per request
+ * Features:
+ *   - GitHub Copilot via copilot-api local proxy
+ *   - Tool calling loop with parallel execution
+ *   - Persistent Brain skills (stored in Supabase config table)
+ *   - Per-session memory isolation (agentId scoping)
+ *   - Auto-compact context when sessions get long
+ *   - Self-learning lesson injection
+ *   - Retry on timeout
  */
 
 const logger = require('./logger');
-const tools = require('./tools');
+const tools  = require('./tools');
 const memory = require('./memory');
 const { APP_CONSTANTS, BRAIN_CONSTANTS } = require('./constants');
 
-const COPILOT_BASE = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
-const COPILOT_CHAT = `${COPILOT_BASE}/v1/chat/completions`;
+const COPILOT_BASE   = process.env.COPILOT_API_URL || APP_CONSTANTS.DEFAULT_COPILOT_API_URL;
+const COPILOT_CHAT   = `${COPILOT_BASE}/v1/chat/completions`;
 const COPILOT_MODELS = `${COPILOT_BASE}/v1/models`;
+
+// ─── Config ───────────────────────────────────────────────────────────────────
 
 const config = {
   available: false,
-  model: 'gpt-5-mini',
-  models: [],
-  provider: 'copilot',
-  baseUrl: COPILOT_BASE,
+  model:     'gpt-5-mini',
+  models:    [],
+  provider:  'copilot',
+  baseUrl:   COPILOT_BASE,
 };
 
 const KNOWN_MODELS = [
-  { id: 'gpt-5-mini',        quota: 'free', label: 'GPT-5 Mini (Free)' },
-  { id: 'gpt-4.1-mini',      quota: 'free', label: 'GPT-4.1 Mini (Free)' },
-  { id: 'gpt-4o-mini',       quota: 'free', label: 'GPT-4o Mini (Free)' },
-  { id: 'gemini-2.0-flash',  quota: 'free', label: 'Gemini 2.0 Flash (Free)' },
-  { id: 'gpt-4.1',           quota: 'x1',   label: 'GPT-4.1 (x1)' },
-  { id: 'gpt-4o',            quota: 'x1',   label: 'GPT-4o (x1)' },
-  { id: 'claude-sonnet-4.5', quota: 'x1',   label: 'Claude Sonnet 4.5 (x1)' },
-  { id: 'claude-haiku-3.5',  quota: 'x1',   label: 'Claude Haiku 3.5 (x1)' },
-  { id: 'o1-mini',           quota: 'x3',   label: 'o1 Mini (x3 premium)' },
-  { id: 'o3-mini',           quota: 'x3',   label: 'o3 Mini (x3 premium)' },
-  { id: 'o1',                quota: 'x5',   label: 'o1 (x5 premium)' },
+  { id: 'gpt-5-mini',            quota: 'free', label: 'GPT-5 Mini (Free)' },
+  { id: 'gpt-4.1-mini',          quota: 'free', label: 'GPT-4.1 Mini (Free)' },
+  { id: 'gpt-4o-mini',           quota: 'free', label: 'GPT-4o Mini (Free)' },
+  { id: 'gemini-2.0-flash',      quota: 'free', label: 'Gemini 2.0 Flash (Free)' },
+  { id: 'claude-haiku-4-5',      quota: 'x0.33', label: 'Claude Haiku 4.5 (x0.33)' },
+  { id: 'gpt-4.1',               quota: 'x1',   label: 'GPT-4.1 (x1)' },
+  { id: 'gpt-4o',                quota: 'x1',   label: 'GPT-4o (x1)' },
+  { id: 'gpt-5.1',               quota: 'x1',   label: 'GPT-5.1 (x1)' },
+  { id: 'claude-sonnet-4.5',     quota: 'x1',   label: 'Claude Sonnet 4.5 (x1)' },
+  { id: 'gemini-2.5-pro',        quota: 'x1',   label: 'Gemini 2.5 Pro (x1)' },
+  { id: 'gpt-5.1-codex',         quota: 'x1',   label: 'GPT-5.1 Codex (x1)' },
+  { id: 'o1-mini',               quota: 'x3',   label: 'o1 Mini (x3)' },
+  { id: 'o3-mini',               quota: 'x3',   label: 'o3 Mini (x3)' },
+  { id: 'o1',                    quota: 'x5',   label: 'o1 (x5)' },
 ];
 
-// ─── Payload limits ────────────────────────────────────────────────────────────
+// ─── Persistent Brain skills ───────────────────────────────────────────────────
+// Stored in Supabase config table, injected into BRAIN_SYSTEM at chat time.
+// Applies to every session — user sets once, persists across restarts.
 
-// copilot-api upstream timeout is 10s — keep payload small to stay under it
-// These are conservative limits to avoid timeouts
-const TOOL_RESULT_MAX_CHARS  = 1500;  // max chars per tool result in loopMessages
-const TOOL_RESULT_HEAD_CHARS = 600;   // keep first N chars
-const TOOL_RESULT_TAIL_CHARS = 300;   // keep last N chars
-const MAX_LOOP_MESSAGES_CHARS = 12000; // hard cap on total loopMessages payload
+let brainSkills = [];
 
-// ─── Tool result pruning ──────────────────────────────────────────────────────
-
-/**
- * Prune a single tool result string.
- * Head/tail preservation to keep most useful parts.
- */
-function pruneContent(content, maxChars = TOOL_RESULT_MAX_CHARS) {
-  if (!content || content.length <= maxChars) return content;
-  const head = content.slice(0, TOOL_RESULT_HEAD_CHARS);
-  const tail = content.slice(-TOOL_RESULT_TAIL_CHARS);
-  const trimmed = content.length - TOOL_RESULT_HEAD_CHARS - TOOL_RESULT_TAIL_CHARS;
-  return `${head}\n...[${trimmed} chars trimmed]...\n${tail}`;
+async function loadBrainSkills() {
+  try {
+    const db = require('./db');
+    const { data } = await db
+      .from('config')
+      .select('value')
+      .eq('key', 'brain_skills')
+      .single();
+    if (data?.value) {
+      brainSkills = JSON.parse(data.value);
+      logger.info('brain', `Loaded ${brainSkills.length} persistent skill(s)`);
+    }
+  } catch { /* first run — no skills yet, start empty */ }
 }
 
-/**
- * Prune loopMessages before sending to copilot-api.
- *
- * Strategy:
- *   1. Always keep: system message + last 2 user/assistant turns
- *   2. Shrink all tool result messages (role: 'tool')
- *   3. If total still too large: drop middle tool messages entirely,
- *      replace with a placeholder summary
- */
-function pruneLoopMessages(messages) {
-  if (!messages || messages.length === 0) return messages;
-
-  // Step 1: Shrink all tool results
-  const shrunk = messages.map(m => {
-    if (m.role === 'tool') {
-      let content = m.content;
-      // Parse JSON tool results and prune the inner content
-      try {
-        const parsed = JSON.parse(content);
-        // If it has a 'results' array (search), prune each snippet
-        if (parsed.results && Array.isArray(parsed.results)) {
-          parsed.results = parsed.results.slice(0, 5).map(r => ({
-            title: r.title,
-            snippet: (r.snippet || '').slice(0, 200),
-            url: r.url,
-            source: r.source,
-          }));
-          content = JSON.stringify(parsed);
-        }
-        // If it has a 'content' string (browse/read), prune it
-        if (parsed.content && typeof parsed.content === 'string') {
-          parsed.content = pruneContent(parsed.content, 1000);
-          content = JSON.stringify(parsed);
-        }
-        // If it has a 'response' string (agent call), prune it
-        if (parsed.response && typeof parsed.response === 'string') {
-          parsed.response = pruneContent(parsed.response, 800);
-          content = JSON.stringify(parsed);
-        }
-      } catch {
-        // Not JSON — prune as plain text
-        content = pruneContent(content);
-      }
-      return { ...m, content };
-    }
-    return m;
-  });
-
-  // Step 2: Check total size
-  const totalChars = shrunk.reduce((a, m) => a + (m.content?.length || 0), 0);
-  if (totalChars <= MAX_LOOP_MESSAGES_CHARS) return shrunk;
-
-  // Step 3: Still too large — drop intermediate tool exchanges from the middle
-  // Keep: system (index 0), first user message, last 6 messages
-  const system = shrunk.filter(m => m.role === 'system');
-  const nonSystem = shrunk.filter(m => m.role !== 'system');
-  const firstUser = nonSystem.find(m => m.role === 'user');
-  const lastSix = nonSystem.slice(-6);
-  const lastSixIds = new Set(lastSix.map((_, i) => nonSystem.length - 6 + i));
-
-  // Count what we dropped
-  const middle = nonSystem.slice(1, -6);
-  const droppedToolCount = middle.filter(m => m.role === 'tool').length;
-
-  const kept = [
-    ...system,
-    ...(firstUser ? [firstUser] : []),
-    // Placeholder so model knows context was trimmed
-    ...(droppedToolCount > 0 ? [{
-      role: 'tool',
-      tool_call_id: 'context_trim',
-      content: JSON.stringify({
-        note: `[${droppedToolCount} intermediate tool results trimmed to reduce payload size. Key findings were already processed in earlier turns.]`,
-      }),
-    }] : []),
-    ...lastSix,
-  ];
-
-  const keptChars = kept.reduce((a, m) => a + (m.content?.length || 0), 0);
-  logger.debug('brain', `pruneLoopMessages: ${totalChars} → ${keptChars} chars (dropped ${droppedToolCount} tool results)`);
-
-  return kept;
+function getSkills() {
+  return [...brainSkills];
 }
 
-// ─── Retry wrapper ────────────────────────────────────────────────────────────
-
-/**
- * Retry a fetch request on timeout/network errors.
- * copilot-api has a 10s upstream timeout — if we hit it, wait briefly and retry.
- */
-async function fetchWithRetry(url, opts, maxRetries = 2) {
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fetch(url, opts);
-    } catch (e) {
-      lastError = e;
-      const isTimeout = e.message?.includes('timeout') ||
-                        e.message?.includes('fetch failed') ||
-                        e.cause?.message?.includes('Connect Timeout') ||
-                        e.cause?.message?.includes('fetch failed');
-
-      if (!isTimeout || attempt === maxRetries) throw e;
-
-      const delay = 1500 * (attempt + 1); // 1.5s, 3s
-      logger.warn('brain', `Request timeout (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
-      await new Promise(r => setTimeout(r, delay));
-    }
+async function setSkills(skills) {
+  brainSkills = Array.isArray(skills) ? skills : [];
+  try {
+    const db = require('./db');
+    await db.from('config').upsert({
+      key:   'brain_skills',
+      value: JSON.stringify(brainSkills),
+    });
+    logger.info('brain', `Saved ${brainSkills.length} skill(s)`);
+  } catch (e) {
+    logger.warn('brain', `Failed to persist skills: ${e.message}`);
   }
-  throw lastError;
 }
 
-// ─── Copilot availability check ───────────────────────────────────────────────
+// ─── BRAIN_SYSTEM prompt ───────────────────────────────────────────────────────
+
+const BRAIN_SYSTEM = `You are Brain — the central AI orchestrator of Brain OS.
+
+## CRITICAL: Task Completion Rules
+
+1. **Do NOT announce what you're about to do** — execute immediately.
+   - ❌ "Tôi sẽ tìm kiếm thông tin này, chờ một chút..."
+   - ✅ [call search_web immediately, deliver results]
+
+2. **Multi-step tasks**: call ALL required tools before writing the final answer.
+
+3. **Never produce a partial response** — if a task needs 5 searches, run all 5, then respond once.
+
+4. **Sequential research pattern**:
+   - Broad search → specific lookups (parallel if independent) → synthesize → one response
+
+5. **Parallel tool calls**: prefer parallel over sequential when tasks are independent.
+
+## Core Responsibilities
+
+- Answer conversational questions directly and concisely.
+- Use tools for real data/actions — never fabricate.
+- Delegate specialized work via call_agent only after verifying IDs with list_agents.
+- NEVER call call_agent with a guessed agent ID — always list_agents first.
+
+## Response Guidelines
+
+- Default language: Vietnamese (unless user writes in another language).
+- Be direct — deliver results, not commentary about the process.
+- Use markdown for structured responses.
+- When listing items: use a table or numbered list with consistent fields.
+- All auto-generated skills, rules, and instructions MUST be in English.
+
+## Agent Creation Wizard
+
+When user wants to create an agent, follow these steps:
+1. Ask purpose
+2. Propose name + description
+3. Recommend provider/model (table format)
+4. Draft system prompt
+5. Suggest 3–5 skills (in English)
+6. Confirm → call create_agent
+
+## Tool Usage
+
+- search_web + browse_web: for current/external information
+- call_agent: route specialized work (translation, coding, research)
+- run_pipeline: parallel research across multiple agents
+- save_lesson: record patterns that should persist across sessions
+- Always prefer parallel tool calls when tasks are independent
+
+## MCP Tool Rules (CRITICAL)
+
+Sub-agents do NOT have access to mcp_call or http_request.
+**NEVER use call_agent for tasks requiring mcp_call — Brain calls it directly.**
+
+Correct workflow for MCP data requests:
+1. list_mcp_servers() → get exact available tool names
+2. mcp_call() → fetch data using EXACT tool name from step 1
+3. list_agents() → check if Brain (id: "brain") has formatting skills
+4. Apply Brain's formatting skills to the output
+5. Brain formats the output itself — never delegate MCP formatting to sub-agents
+
+**NEVER guess tool names.** If mcp_call returns tool-not-found:
+→ call mcp_connect to refresh, then retry with the correct name.
+
+When user says "update skill then call Monday":
+- list_agents → read current Brain skills
+- update_agent(brain) with merged skills (keep existing + add new)
+- list_mcp_servers → get tool names
+- mcp_call → get data
+- Format output applying the new skill immediately
+
+## Skill Management Rules (CRITICAL)
+
+Brain's skills (id: "brain") are **permanent configuration** — they apply to all sessions.
+Sub-agent skills only affect that agent's LLM output (no tool access).
+
+**When adding/updating skills:**
+- Always call list_agents FIRST to read current skills
+- Merge: keep ALL existing skills + add/modify only what was requested
+- NEVER pass an empty skills array to update_agent unless user explicitly says "remove all skills"
+- Formatting skills (HTML tables, icons, layout) MUST be added to Brain, not sub-agents
+
+**When user says "add skill X":**
+1. list_agents() → read Brain's current skills array
+2. update_agent({ agent_id: "brain", skills: [...currentSkills, "X"] })
+3. Confirm with the user what was added`;
+
+// ─── Copilot availability ──────────────────────────────────────────────────────
 
 async function checkOllama() {
   try {
@@ -186,9 +189,9 @@ async function checkOllama() {
         const known = KNOWN_MODELS.find(k => k.id === m.id);
         return known || { id: m.id, quota: 'x1', label: m.id };
       });
-      config.models = discovered.length ? discovered : KNOWN_MODELS;
+      config.models    = discovered.length ? discovered : KNOWN_MODELS;
       config.available = true;
-      logger.info('brain', `✅ copilot-api connected. Model: ${config.model}`);
+      logger.info('brain', `✅ copilot-api connected — model: ${config.model}`);
       return true;
     }
   } catch { /* not running */ }
@@ -204,145 +207,139 @@ function setModel(model) {
 
 function getConfig() { return { ...config }; }
 
-// ─── Brain system prompt ───────────────────────────────────────────────────────
+// ─── Retry wrapper ────────────────────────────────────────────────────────────
 
-const BRAIN_SYSTEM = `You are Brain — the central AI orchestrator of Brain OS.
+async function fetchWithRetry(url, opts, maxRetries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetch(url, opts);
+    } catch (e) {
+      lastError = e;
+      const isTimeout =
+        e.message?.includes('timeout') ||
+        e.message?.includes('fetch failed') ||
+        e.cause?.message?.includes('Connect Timeout');
+      if (!isTimeout || attempt === maxRetries) throw e;
+      const delay = 1500 * (attempt + 1);
+      logger.warn('brain', `Timeout (attempt ${attempt + 1}/${maxRetries + 1}), retry in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw lastError;
+}
 
-## CRITICAL: Task Completion Rules
+// ─── Prune large tool results before sending to API ──────────────────────────
+// Prevents payload bloat that causes timeouts on copilot-api
 
-**You MUST complete every task fully before sending a final response.**
+function pruneLoopMessages(messages) {
+  const TOOL_MAX   = 1500;
+  const HEAD       = 600;
+  const TAIL       = 400;
+  const RESP_MAX   = 800;
+  const SEARCH_MAX = 5;
 
-1. **Do NOT announce what you're about to do** — just do it immediately.
-   - ❌ WRONG: "Tôi sẽ tìm kiếm thông tin này, chờ một chút..."
-   - ✅ RIGHT: [immediately call search_web, then deliver results]
+  return messages.map(m => {
+    if (m.role !== 'tool') return m;
 
-2. **Multi-step tasks require multiple tool calls** — call ALL needed tools before writing your answer.
-   - For research tasks: search → read → synthesize → respond in ONE message
-   - Never stop after one tool call and wait for the user to ask again
+    let content = m.content;
+    if (typeof content === 'string' && content.length > TOOL_MAX) {
+      // Shrink search results
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed?.results?.length > SEARCH_MAX) {
+          parsed.results = parsed.results.slice(0, SEARCH_MAX).map(r => ({
+            ...r,
+            snippet: r.snippet?.slice(0, 200),
+          }));
+          content = JSON.stringify(parsed);
+        }
+      } catch { /* not JSON — truncate raw */ }
 
-3. **Never produce a partial response** — if a task requires 5 searches, do all 5, then respond once with the complete answer.
+      if (content.length > TOOL_MAX) {
+        content = `${content.slice(0, HEAD)}\n...[${content.length - HEAD - TAIL} chars trimmed]...\n${content.slice(-TAIL)}`;
+      }
+    }
 
-4. **Sequential research pattern**:
-   - First call: broad search for overview
-   - Follow-up calls: specific lookups per item (in parallel if possible)
-   - Final message: complete synthesized answer
+    if (typeof m.content === 'object') {
+      const str = JSON.stringify(m.content);
+      if (str.length > RESP_MAX) {
+        content = str.slice(0, RESP_MAX) + '...[trimmed]';
+      }
+    }
 
-5. **When using run_pipeline or parallel tool calls**, wait for ALL results before writing your response.
-
-## Core Responsibilities
-
-- Answer conversational questions directly and concisely
-- Use tools when real data or actions are needed — call them without announcing first
-- Delegate specialized tasks to the right agent via call_agent
-- NEVER fabricate information — use tools when you need real data
-- Tools can be called in parallel for efficiency
-
-## Response Guidelines
-
-- Default language: Vietnamese (unless user writes in another language)
-- Be direct — deliver results, not commentary about the process
-- Use markdown for structured responses (tables, headers, bullet lists)
-- When listing items (repos, articles, products): use a table or numbered list with consistent fields per item
-- Always verify agent IDs with list_agents before calling call_agent
-
-## Skill & Rule Standards
-
-All auto-generated agent skills, rules, and instructions MUST be in English.
-
-## Agent Creation Wizard
-
-When user wants to create an agent, follow 6 steps:
-1. Ask purpose
-2. Propose name + description
-3. Recommend provider/model (table format)
-4. Draft system prompt
-5. Suggest 3-5 skills (in English)
-6. Confirm then call create_agent
-
-## Tool Usage
-
-- search_web + browse_web: for any current/external information
-- call_agent: route specialized work
-- run_pipeline: parallel research (use this for "top N" tasks — run N searches at once)
-- save_lesson: record useful patterns
-- Always prefer parallel calls over sequential when tasks are independent`;
+    return { ...m, content };
+  });
+}
 
 // ─── Non-streaming call with tools ────────────────────────────────────────────
 
 async function callWithTools(messages, model) {
   const useModel = model || config.model;
+  const pruned   = pruneLoopMessages(messages);
 
-  // Prune messages before sending to avoid timeout
-  const pruned = pruneLoopMessages(messages);
-
-  const body = JSON.stringify({
-    model: useModel,
-    messages: pruned,
-    tools: tools.TOOL_DEFINITIONS,
-    tool_choice: 'auto',
-    stream: false,
-    max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS,
-  });
-
-  logger.debug('brain', `callWithTools: payload ${body.length} chars, ${pruned.length} messages`);
+  logger.debug('brain', `callWithTools: ${pruned.length} msgs, payload ~${JSON.stringify(pruned).length} chars`);
 
   const res = await fetchWithRetry(COPILOT_CHAT, {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body,
+    body: JSON.stringify({
+      model:      useModel,
+      messages:   pruned,
+      tools:      tools.TOOL_DEFINITIONS,
+      tool_choice: 'auto',
+      stream:     false,
+      max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS,
+    }),
   });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`copilot-api error: ${res.status} ${err.slice(0, 200)}`);
+    throw new Error(`copilot-api error ${res.status}: ${err.slice(0, 200)}`);
   }
   const data = await res.json();
   return data.choices[0];
 }
 
-// ─── Streaming response ────────────────────────────────────────────────────────
+// ─── Streaming final response ──────────────────────────────────────────────────
 
 async function streamChat({ messages, model, onToken, onDone, onError }) {
   const useModel = model || config.model;
-
-  // Prune before streaming too
-  const pruned = pruneLoopMessages(messages);
+  const pruned   = pruneLoopMessages(messages);
 
   try {
     const res = await fetchWithRetry(COPILOT_CHAT, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: useModel,
-        messages: pruned,
-        stream: true,
+        model:      useModel,
+        messages:   pruned,
+        stream:     true,
         max_tokens: BRAIN_CONSTANTS.STREAM_MAX_TOKENS,
       }),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      throw new Error(`copilot-api stream error: ${res.status} ${err.slice(0, 200)}`);
+      throw new Error(`Stream error ${res.status}: ${err.slice(0, 200)}`);
     }
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let fullContent = '';
+    const reader      = res.body.getReader();
+    const decoder     = new TextDecoder();
+    let   fullContent = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const text = decoder.decode(value);
-      const lines = text.split('\n').filter(l => l.startsWith('data: ') && !l.includes('[DONE]'));
+      const lines = decoder.decode(value).split('\n')
+        .filter(l => l.startsWith('data: ') && !l.includes('[DONE]'));
       for (const line of lines) {
         try {
-          const chunk = JSON.parse(line.slice(6));
-          const token = chunk.choices?.[0]?.delta?.content || '';
+          const token = JSON.parse(line.slice(6)).choices?.[0]?.delta?.content || '';
           if (token) { fullContent += token; onToken(token); }
-        } catch { }
+        } catch { /* skip malformed chunk */ }
       }
     }
-
     onDone(fullContent);
     return fullContent;
   } catch (e) {
@@ -352,104 +349,120 @@ async function streamChat({ messages, model, onToken, onDone, onError }) {
   }
 }
 
+// ─── Simple one-shot call (no tools, no streaming) ────────────────────────────
+
 async function call(messages, model = null) {
   const useModel = model || config.model;
   try {
     const res = await fetchWithRetry(COPILOT_CHAT, {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: useModel,
+        model:      useModel,
         messages,
-        stream: false,
+        stream:     false,
         max_tokens: BRAIN_CONSTANTS.CALL_MAX_TOKENS,
       }),
     });
-    if (!res.ok) throw new Error(`copilot-api: ${res.status}`);
+    if (!res.ok) throw new Error(`copilot-api ${res.status}`);
     const data = await res.json();
     return data.choices[0]?.message?.content || '';
   } catch (e) {
-    logger.error('brain', `Call error: ${e.message}`);
+    logger.error('brain', `call() error: ${e.message}`);
     return null;
   }
 }
 
-// ─── Main chat with tool loop ──────────────────────────────────────────────────
+// ─── Main chat entry point ─────────────────────────────────────────────────────
 
 async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, onToolCall }) {
+  // Ensure copilot-api is reachable
   if (!config.available) {
     await checkOllama();
     if (!config.available) {
       onError(new Error(
-        'copilot-api chưa chạy. Hãy chạy: npx copilot-api@latest start\n' +
-        '(Lần đầu: npx copilot-api@latest auth để đăng nhập GitHub)'
+        'copilot-api chưa chạy.\n' +
+        'Khởi động: npx copilot-api@latest start\n' +
+        '(Lần đầu: npx copilot-api@latest auth)'
       ));
       return;
     }
   }
 
-  // Inject promoted lessons
+  // Auto-compact context silently if session is getting long
+  await memory.autoCompactIfNeeded(agentId, (msgs) => call(msgs));
+
+  // Build system prompt:
+  //   BRAIN_SYSTEM
+  //   + Brain's persistent skills (global, all sessions)
+  //   + promoted lessons from self-learning
   let selfLearn;
   try { selfLearn = require('./self-learn'); } catch { selfLearn = null; }
-  const lessonsContext = selfLearn ? selfLearn.buildLessonsContext(userInput) : '';
-  const fullSystemPrompt = BRAIN_SYSTEM + lessonsContext;
 
+  const lessonsContext = selfLearn ? selfLearn.buildLessonsContext(userInput) : '';
+
+  const skillsSection = brainSkills.length > 0
+    ? '\n\n## Persistent Brain Skills\n' +
+      brainSkills.map((s, i) => `${i + 1}. ${s}`).join('\n')
+    : '';
+
+  const fullSystemPrompt = BRAIN_SYSTEM + skillsSection + lessonsContext;
+
+  // Assemble prompt with context (head/tail preservation, token budget)
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
     agentId,
     systemPrompt: fullSystemPrompt,
-    tokenBudget: BRAIN_CONSTANTS.TOKEN_BUDGET,
+    tokenBudget:  BRAIN_CONSTANTS.TOKEN_BUDGET,
   });
 
-  const messages = [
-    { role: 'system', content: assembled.systemPrompt },
-    ...assembled.context,
-    { role: 'user', content: userInput },
-  ];
+  logger.debug('brain', `Chat start. agentId=${agentId}, ctx=${assembled.stats.selectedMessages} msgs, ~${assembled.stats.estimatedTokens} tokens`);
 
-  logger.debug('brain', `Chat start. Context: ${assembled.stats.selectedMessages} msgs, ~${assembled.stats.estimatedTokens} tokens`);
-
+  // Store user message
   memory.store('user', userInput, agentId);
 
-  let loopMessages = [...messages];
-  let loopCount = 0;
+  const loopMessages = [
+    { role: 'system', content: assembled.systemPrompt },
+    ...assembled.context,
+    { role: 'user',   content: userInput },
+  ];
+
+  // ─── Tool calling loop ─────────────────────────────────────────────────────
+  //
+  // When model returns message with BOTH content AND tool_calls:
+  //   content = intermediate thought (not the final answer)
+  //   tool_calls = must be executed before responding
+  //
+  // We only stream to the user when there are NO tool_calls in the response.
+
   const MAX_LOOPS = BRAIN_CONSTANTS.TOOL_LOOP_LIMIT;
 
-  while (loopCount < MAX_LOOPS) {
-    loopCount++;
-    logger.debug('brain', `Tool loop ${loopCount}/${MAX_LOOPS}`);
+  for (let loop = 1; loop <= MAX_LOOPS; loop++) {
+    logger.debug('brain', `Tool loop ${loop}/${MAX_LOOPS}`);
 
     let choice;
     try {
-      // pruneLoopMessages is called inside callWithTools
       choice = await callWithTools(loopMessages, config.model);
     } catch (e) {
-      logger.error('brain', `Tool loop error (attempt ${loopCount}): ${e.message}`);
-
-      // On timeout after retries: try to deliver partial response
-      if (e.message?.includes('timeout') || e.message?.includes('fetch failed') || e.cause?.message?.includes('timeout')) {
-        const fallback = 'Xin lỗi, kết nối tới Copilot bị timeout. Có thể thử lại hoặc chia nhỏ task hơn.';
-        onError(new Error(fallback));
-      } else {
-        onError(e);
-      }
+      logger.error('brain', `Loop ${loop} error: ${e.message}`);
+      onError(e);
       return;
     }
 
-    const msg = choice.message;
-    const hasToolCalls = msg.tool_calls && msg.tool_calls.length > 0;
+    const msg         = choice.message;
+    const hasTools    = msg.tool_calls?.length > 0;
 
-    // No tool calls → final answer
-    if (!hasToolCalls) {
+    // ── No tool calls → final answer ─────────────────────────────────────────
+    if (!hasTools) {
       if (msg.content) {
-        const chars = msg.content.split('');
-        for (const char of chars) onToken(char);
+        for (const ch of msg.content) onToken(ch);
         memory.store('assistant', msg.content, agentId);
         onDone(msg.content, assembled.stats);
       } else {
+        // Empty content — fall back to streaming
         await streamChat({
           messages: loopMessages,
-          model: config.model,
+          model:    config.model,
           onToken,
           onDone: (content) => {
             memory.store('assistant', content, agentId);
@@ -461,47 +474,52 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
       return;
     }
 
-    // Has tool_calls (content is intermediate thought, not final answer)
+    // ── Has tool calls → execute, continue loop ───────────────────────────────
     if (msg.content) {
-      logger.debug('brain', `Intermediate thought + ${msg.tool_calls.length} tool calls`);
+      logger.debug('brain', `Intermediate thought (${msg.content.length}c) + ${msg.tool_calls.length} tool calls`);
     }
 
-    logger.debug('brain', `Executing: ${msg.tool_calls.map(t => t.function.name).join(', ')}`);
+    const toolNames = msg.tool_calls.map(t => t.function.name).join(', ');
+    logger.debug('brain', `Executing: ${toolNames}`);
 
     if (onToolCall) {
-      msg.tool_calls.forEach(tc => {
-        onToolCall({ tool: tc.function.name, args: tc.function.arguments });
-      });
+      msg.tool_calls.forEach(tc =>
+        onToolCall({ tool: tc.function.name, args: tc.function.arguments })
+      );
     }
 
+    // Add assistant message (required by spec before tool results)
     loopMessages.push(msg);
 
-    const toolResults = await tools.executeToolsParallel(
+    // Execute all tool calls in parallel
+    const results = await tools.executeToolsParallel(
       msg.tool_calls.map(tc => ({
-        id: tc.id,
+        id:       tc.id,
         function: {
-          name: tc.function.name,
+          name:      tc.function.name,
           arguments: typeof tc.function.arguments === 'string'
             ? JSON.parse(tc.function.arguments || '{}')
-            : tc.function.arguments,
+            : (tc.function.arguments || {}),
         },
       }))
     );
 
-    for (let i = 0; i < msg.tool_calls.length; i++) {
+    // Append tool results
+    msg.tool_calls.forEach((tc, i) => {
       loopMessages.push({
-        role: 'tool',
-        tool_call_id: msg.tool_calls[i].id,
-        content: JSON.stringify(toolResults[i]),
+        role:         'tool',
+        tool_call_id: tc.id,
+        content:      JSON.stringify(results[i]),
       });
-    }
+    });
+    // Continue loop
   }
 
-  // Max loops reached
-  logger.warn('brain', `Tool loop limit (${MAX_LOOPS}) reached`);
+  // ── Loop limit hit → force final response ─────────────────────────────────
+  logger.warn('brain', `Tool loop limit (${MAX_LOOPS}) reached — forcing final stream`);
   await streamChat({
     messages: loopMessages,
-    model: config.model,
+    model:    config.model,
     onToken,
     onDone: (content) => {
       memory.store('assistant', content, agentId);
@@ -511,30 +529,37 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   });
 }
 
-// ─── Summarize history ─────────────────────────────────────────────────────────
+// ─── Summarize history (for compact button) ────────────────────────────────────
 
 async function summarizeHistory(agentId = 'brain') {
   const history = memory.getHistory(agentId, BRAIN_CONSTANTS.SUMMARY_HISTORY_LIMIT);
-  if (history.length < BRAIN_CONSTANTS.SUMMARY_MIN_HISTORY) return 'Chưa đủ lịch sử để tóm tắt.';
+  if (history.length < BRAIN_CONSTANTS.SUMMARY_MIN_HISTORY) {
+    return 'Chưa đủ lịch sử để tóm tắt.';
+  }
 
   const text = history
     .slice(-BRAIN_CONSTANTS.SUMMARY_HISTORY_LIMIT)
-    .map(m => `${m.role}: ${m.content}`)
+    .map(m => `${m.role}: ${m.content.slice(0, 400)}`)
     .join('\n');
 
   const result = await call([{
-    role: 'user',
-    content: `Summarize the following conversation concisely, preserving key information:\n\n${text}`,
+    role:    'user',
+    content: `Summarize this conversation concisely in 4–6 bullet points. Preserve key facts, decisions, and user preferences:\n\n${text}`,
   }]);
 
   if (result) memory.storeSummary(agentId, result, []);
   return result || 'Unable to summarize.';
 }
 
+// ─── Exports ──────────────────────────────────────────────────────────────────
+
 module.exports = {
   checkOllama,
   setModel,
   getConfig,
+  getSkills,
+  setSkills,
+  loadBrainSkills,
   chat,
   call,
   streamChat,

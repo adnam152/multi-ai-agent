@@ -1,13 +1,16 @@
 /**
  * memory.js — Conversation Memory & Prompt Assembler (v2)
  *
- * Improvements over v1:
- *   - Head/tail preservation: cắt ở giữa thay vì cắt ngẫu nhiên (OpenClaw 70/20 ratio)
- *   - Turn-based cutting: luôn cắt tại ranh giới user/assistant, không bao giờ cắt giữa cặp
- *   - Tool result pruning: tự động shrink tool outputs dài trong context
- *   - Context health: getContextHealth() báo % usage + cảnh báo
- *   - Auto-compact trigger: khi messages > AUTO_COMPACT_THRESHOLD, gợi ý compact
- *   - assemblePrompt() trả về stats đầy đủ hơn để hiển thị trên UI
+ * Fixes:
+ *   - Supabase .delete().in().catch() is not a function → use async IIFE
+ *   - Auto-compact: when context > 70%, silently summarize oldest messages
+ *     instead of showing a warning banner
+ *
+ * Context management strategy (OpenClaw-inspired):
+ *   - Head/tail preservation: always keep first 2 + last N messages
+ *   - Turn-based cutting: never split a user/assistant pair
+ *   - Tool result pruning: shrink long tool outputs in-memory
+ *   - Auto-compact: when history > AUTO_COMPACT_THRESHOLD, summarize oldest 40%
  */
 
 const db = require('./db');
@@ -18,10 +21,14 @@ let summaries = [];
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
 
-const AUTO_COMPACT_THRESHOLD = 80;   // gợi ý compact khi > 80 messages
-const TOOL_RESULT_MAX_CHARS  = 2000; // prune tool results dài hơn ngưỡng này
-const TOOL_RESULT_HEAD_CHARS = 800;  // giữ 800 chars đầu
-const TOOL_RESULT_TAIL_CHARS = 400;  // giữ 400 chars cuối
+const AUTO_COMPACT_THRESHOLD = 60;    // auto-compact when agentId has > 60 messages
+const AUTO_COMPACT_KEEP_RATIO = 0.6;  // after compact, keep newest 60%
+const TOOL_RESULT_MAX_CHARS   = 1500;
+const TOOL_RESULT_HEAD_CHARS  = 600;
+const TOOL_RESULT_TAIL_CHARS  = 300;
+
+// Track which agents are currently being compacted (avoid double-compact)
+const compactingAgents = new Set();
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
@@ -38,6 +45,7 @@ async function load() {
     id: r.id, role: r.role, content: r.content,
     agentId: r.agent_id, timestamp: r.timestamp, ...r.meta,
   }));
+
   summaries = (sums || []).map(r => ({
     id: r.id, agentId: r.agent_id, summary: r.summary,
     coveredIds: r.covered_ids, timestamp: r.timestamp,
@@ -58,28 +66,97 @@ function store(role, content, agentId = 'brain', meta = {}) {
   history.push(msg);
   if (history.length > MEMORY_CONSTANTS.MAX_HISTORY) history.shift();
 
-  db.from('messages').insert({
-    id: msg.id, role: msg.role, content: msg.content,
-    agent_id: msg.agentId, timestamp: msg.timestamp, meta,
-  }).then(({ error }) => {
-    if (error) console.warn(`[memory] Failed to persist ${msg.id}: ${error.message}`);
-  });
+  // ✅ Fix: use async IIFE instead of .catch() on Supabase chain
+  (async () => {
+    try {
+      await db.from('messages').insert({
+        id: msg.id, role: msg.role, content: msg.content,
+        agent_id: msg.agentId, timestamp: msg.timestamp, meta,
+      });
+    } catch (e) {
+      console.warn(`[memory] Failed to persist ${msg.id}: ${e.message}`);
+    }
+  })();
+
   return msg;
 }
 
-// ─── Tool result pruning ──────────────────────────────────────────────────────
+// ─── Auto-compact (silent, no user intervention needed) ──────────────────────
 
 /**
- * Shrink tool result messages that are too long.
- * Keeps head + tail, trims the middle (same strategy as OpenClaw).
+ * When an agent's history exceeds AUTO_COMPACT_THRESHOLD:
+ *   1. Take the oldest 40% of messages
+ *   2. Build a compact summary string from them
+ *   3. Store the summary in Supabase and drop those messages from history
+ *
+ * This runs silently in the background — no warning shown to user.
+ * Brain module calls this before assembling prompts.
  */
-function pruneToolResult(content) {
-  if (!content || content.length <= TOOL_RESULT_MAX_CHARS) return content;
+async function autoCompactIfNeeded(agentId, brainCallFn) {
+  if (compactingAgents.has(agentId)) return; // already in progress
 
+  const agentHistory = history.filter(m => m.agentId === agentId && m.role !== 'system');
+  if (agentHistory.length <= AUTO_COMPACT_THRESHOLD) return;
+
+  compactingAgents.add(agentId);
+
+  try {
+    // Take oldest 40% to compact
+    const compactCount = Math.floor(agentHistory.length * (1 - AUTO_COMPACT_KEEP_RATIO));
+    const toCompact = agentHistory.slice(0, compactCount);
+    const ids = toCompact.map(m => m.id);
+
+    // Build summary text
+    const text = toCompact
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => `${m.role}: ${m.content.slice(0, 300)}`)
+      .join('\n');
+
+    if (!text.trim()) {
+      compactingAgents.delete(agentId);
+      return;
+    }
+
+    // Use brain to summarize (passed in as dependency to avoid circular require)
+    let summary = null;
+    if (brainCallFn) {
+      try {
+        summary = await brainCallFn([{
+          role: 'user',
+          content: `Summarize this conversation history concisely in 3-5 bullet points. Preserve key facts, decisions, and user preferences:\n\n${text}`,
+        }]);
+      } catch { /* ignore — use fallback */ }
+    }
+
+    if (!summary) {
+      // Fallback: simple truncated text summary
+      summary = `[Auto-compacted ${toCompact.length} messages]\n` +
+        toCompact
+          .filter(m => m.role === 'user')
+          .slice(0, 5)
+          .map(m => `• User asked: ${m.content.slice(0, 100)}`)
+          .join('\n');
+    }
+
+    // Store summary and remove compacted messages
+    storeSummary(agentId, summary, ids);
+
+    console.log(`[memory] Auto-compacted ${ids.length} messages for agent "${agentId}"`);
+  } catch (e) {
+    console.warn(`[memory] Auto-compact failed for ${agentId}: ${e.message}`);
+  } finally {
+    compactingAgents.delete(agentId);
+  }
+}
+
+// ─── Tool result pruning (in-memory, non-destructive) ─────────────────────────
+
+function pruneContent(content, maxChars = TOOL_RESULT_MAX_CHARS) {
+  if (!content || content.length <= maxChars) return content;
   const head = content.slice(0, TOOL_RESULT_HEAD_CHARS);
   const tail = content.slice(-TOOL_RESULT_TAIL_CHARS);
   const trimmed = content.length - TOOL_RESULT_HEAD_CHARS - TOOL_RESULT_TAIL_CHARS;
-  return `${head}\n\n... [${trimmed} chars trimmed] ...\n\n${tail}`;
+  return `${head}\n...[${trimmed} chars trimmed]...\n${tail}`;
 }
 
 // ─── Keyword extraction ───────────────────────────────────────────────────────
@@ -99,33 +176,22 @@ function extractKeywords(text) {
     .filter(w => w.length > MEMORY_CONSTANTS.KEYWORD_MIN_LENGTH && !STOP_WORDS.has(w));
 }
 
-// ─── Score a single message ───────────────────────────────────────────────────
+// ─── Score messages ───────────────────────────────────────────────────────────
 
 function scoreMessage(msg, keywords, msgIndex, total) {
   const recencyScore = total > 1 ? msgIndex / (total - 1) : 1;
-
   let keywordScore = 0;
   if (keywords.length > 0) {
     const msgWords = new Set(extractKeywords(msg.content));
     const matches = keywords.filter(k => msgWords.has(k)).length;
     keywordScore = matches / keywords.length;
   }
-
   const roleBonus = msg.role === 'user' ? 0.1 : 0;
   return 0.5 * recencyScore + 0.4 * keywordScore + 0.1 * roleBonus;
 }
 
-// ─── Head/Tail content preservation ──────────────────────────────────────────
+// ─── Head/tail selection ──────────────────────────────────────────────────────
 
-/**
- * When we must trim context, use head/tail preservation instead of pure
- * score-based selection:
- *   - Always keep the first N messages (session opener / bootstrap)
- *   - Always keep the last N messages (recent context)
- *   - Fill remaining budget with score-based selection from the middle
- *
- * This mirrors OpenClaw's 70/20 split principle adapted for chat.
- */
 function selectMessagesWithHeadTail(scoredMessages, maxChars, systemLen, currentInputLen) {
   if (!scoredMessages.length) return [];
 
@@ -133,12 +199,10 @@ function selectMessagesWithHeadTail(scoredMessages, maxChars, systemLen, current
   let budgetLeft = maxChars - overhead;
   if (budgetLeft <= 0) return [];
 
-  const msgCost = (m) => m.content.length + MEMORY_CONSTANTS.MESSAGE_OVERHEAD_CHARS;
+  const msgCost = m => m.content.length + MEMORY_CONSTANTS.MESSAGE_OVERHEAD_CHARS;
+  const HEAD_N = 2;
+  const TAIL_N = MEMORY_CONSTANTS.ALWAYS_INCLUDE_LAST_N;
 
-  const HEAD_N = 2; // always keep first 2 messages (session context)
-  const TAIL_N = MEMORY_CONSTANTS.ALWAYS_INCLUDE_LAST_N; // always keep last N
-
-  // Separate head, tail, middle
   const head   = scoredMessages.slice(0, HEAD_N);
   const tail   = scoredMessages.slice(-TAIL_N);
   const tailIds = new Set(tail.map(m => m.id));
@@ -147,60 +211,36 @@ function selectMessagesWithHeadTail(scoredMessages, maxChars, systemLen, current
 
   const selected = new Map();
 
-  // First: fit tail (always include — most recent = most important)
   for (const m of tail) {
     const cost = msgCost(m);
-    if (budgetLeft >= cost) {
-      selected.set(m.id, m);
-      budgetLeft -= cost;
-    }
+    if (budgetLeft >= cost) { selected.set(m.id, m); budgetLeft -= cost; }
   }
-
-  // Second: fit head (session bootstrap — only if budget allows)
   for (const m of head) {
     if (selected.has(m.id)) continue;
     const cost = msgCost(m);
-    if (budgetLeft >= cost) {
-      selected.set(m.id, m);
-      budgetLeft -= cost;
-    }
+    if (budgetLeft >= cost) { selected.set(m.id, m); budgetLeft -= cost; }
   }
-
-  // Third: fill remaining budget with best-scored middle messages
-  const middleByScore = [...middle].sort((a, b) => b._score - a._score);
-  for (const m of middleByScore) {
+  for (const m of [...middle].sort((a, b) => b._score - a._score)) {
     if (selected.has(m.id)) continue;
     if (selected.size >= MEMORY_CONSTANTS.CONTEXT_MESSAGE_HARD_CAP) break;
     const cost = msgCost(m);
-    if (budgetLeft >= cost) {
-      selected.set(m.id, m);
-      budgetLeft -= cost;
-    }
+    if (budgetLeft >= cost) { selected.set(m.id, m); budgetLeft -= cost; }
   }
 
-  // Re-sort by timestamp for coherent conversation flow
   return [...selected.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-// ─── Ensure turn completeness ─────────────────────────────────────────────────
+// ─── Turn completeness ────────────────────────────────────────────────────────
 
-/**
- * Never cut mid-exchange: if we have a user message, ensure the following
- * assistant message is included too (and vice versa).
- * Prevents the model from seeing a question without its answer.
- */
 function ensureTurnCompleteness(selectedMessages, allMessages) {
   const selectedIds = new Set(selectedMessages.map(m => m.id));
   const toAdd = [];
 
-  for (let i = 0; i < selectedMessages.length; i++) {
-    const msg = selectedMessages[i];
+  for (const msg of selectedMessages) {
     if (msg.role !== 'user') continue;
-
-    // Find the next assistant message in allMessages
     const msgIdx = allMessages.findIndex(m => m.id === msg.id);
-    const nextAssistant = allMessages.slice(msgIdx + 1).find(m => m.role === 'assistant' && m.agentId === msg.agentId);
-
+    const nextAssistant = allMessages.slice(msgIdx + 1)
+      .find(m => m.role === 'assistant' && m.agentId === msg.agentId);
     if (nextAssistant && !selectedIds.has(nextAssistant.id)) {
       toAdd.push(nextAssistant);
       selectedIds.add(nextAssistant.id);
@@ -211,7 +251,7 @@ function ensureTurnCompleteness(selectedMessages, allMessages) {
   return [...selectedMessages, ...toAdd].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-// ─── Main Prompt Assembler ────────────────────────────────────────────────────
+// ─── Prompt Assembler ─────────────────────────────────────────────────────────
 
 function assemblePrompt({
   currentInput,
@@ -222,50 +262,35 @@ function assemblePrompt({
   const maxChars = tokenBudget * MEMORY_CONSTANTS.CHARS_PER_TOKEN;
   const keywords = extractKeywords(currentInput);
 
-  // Filter by agentId
   const agentHistory = history.filter(m => m.agentId === agentId && m.role !== 'system');
 
-  // Prune tool results in-memory (don't modify stored history)
+  // Prune tool results in-memory before scoring
   const prunedHistory = agentHistory.map(m => {
-    if (m.role === 'tool' || (m.role === 'assistant' && m._toolResult)) {
-      return { ...m, content: pruneToolResult(m.content) };
-    }
+    if (m.role === 'tool') return { ...m, content: pruneContent(m.content) };
     return m;
   });
 
-  // Score all messages
   const scored = prunedHistory.map((msg, i) => ({
     ...msg,
     _score: scoreMessage(msg, keywords, i, prunedHistory.length),
   }));
 
-  // Select with head/tail preservation
   const selected = selectMessagesWithHeadTail(
     scored, maxChars, systemPrompt.length, currentInput.length
   );
-
-  // Ensure turn completeness (don't cut mid-exchange)
   const complete = ensureTurnCompleteness(selected, prunedHistory);
 
-  // Build context for model
   const context = complete.map(m => ({
-    role: m.role === 'tool' ? 'user' : m.role, // normalize tool role for providers
+    role: m.role === 'tool' ? 'user' : m.role,
     content: m.content,
   }));
 
-  // Calculate actual token estimate
   const usedChars = systemPrompt.length + currentInput.length +
     complete.reduce((a, m) => a + m.content.length + MEMORY_CONSTANTS.MESSAGE_OVERHEAD_CHARS, 0) +
     MEMORY_CONSTANTS.PROMPT_OVERHEAD_CHARS;
-  const estimatedTokens = Math.round(usedChars / MEMORY_CONSTANTS.CHARS_PER_TOKEN);
 
-  // Context health
-  const utilizationPct = Math.round((estimatedTokens / tokenBudget) * 100);
-  const shouldCompact = agentHistory.length > AUTO_COMPACT_THRESHOLD;
-  const health = utilizationPct >= 90 ? 'critical'
-    : utilizationPct >= 75 ? 'warning'
-    : utilizationPct >= 50 ? 'ok'
-    : 'good';
+  const estimatedTokens = Math.round(usedChars / MEMORY_CONSTANTS.CHARS_PER_TOKEN);
+  const utilizationPct  = Math.round((estimatedTokens / tokenBudget) * 100);
 
   return {
     systemPrompt,
@@ -278,25 +303,28 @@ function assemblePrompt({
       estimatedTokens,
       tokenBudget,
       utilizationPct,
-      health,               // 'good' | 'ok' | 'warning' | 'critical'
-      shouldCompact,        // true when approaching limits
+      health: utilizationPct >= 90 ? 'critical'
+        : utilizationPct >= 75 ? 'warning'
+        : utilizationPct >= 50 ? 'ok'
+        : 'good',
+      shouldCompact: agentHistory.length > AUTO_COMPACT_THRESHOLD,
       keywords: keywords.slice(0, MEMORY_CONSTANTS.KEYWORD_STATS_LIMIT),
     },
   };
 }
 
-// ─── Context health (for UI) ──────────────────────────────────────────────────
+// ─── Context health ───────────────────────────────────────────────────────────
 
 function getContextHealth(agentId = 'brain', tokenBudget = MEMORY_CONSTANTS.DEFAULT_TOKEN_BUDGET) {
   const agentHistory = history.filter(m => m.agentId === agentId);
   const estimatedChars = agentHistory.reduce((a, m) => a + m.content.length, 0);
   const estimatedTokens = Math.round(estimatedChars / MEMORY_CONSTANTS.CHARS_PER_TOKEN);
-  const utilizationPct = Math.round((estimatedTokens / tokenBudget) * 100);
+  const utilizationPct  = Math.min(Math.round((estimatedTokens / tokenBudget) * 100), 100);
 
   return {
     messageCount: agentHistory.length,
     estimatedTokens,
-    utilizationPct: Math.min(utilizationPct, 100),
+    utilizationPct,
     health: utilizationPct >= 90 ? 'critical'
       : utilizationPct >= 75 ? 'warning'
       : utilizationPct >= 50 ? 'ok'
@@ -306,26 +334,31 @@ function getContextHealth(agentId = 'brain', tokenBudget = MEMORY_CONSTANTS.DEFA
   };
 }
 
-// ─── Store a summary ──────────────────────────────────────────────────────────
+// ─── Store summary ────────────────────────────────────────────────────────────
 
 function storeSummary(agentId, summaryText, coveredIds) {
   const entry = {
     id: Date.now().toString(36),
-    agentId,
-    summary: summaryText,
-    coveredIds,
-    timestamp: Date.now(),
+    agentId, summary: summaryText,
+    coveredIds, timestamp: Date.now(),
   };
   summaries.push(entry);
   history = history.filter(m => !coveredIds.includes(m.id));
 
-  Promise.all([
-    db.from('summaries').insert({
-      id: entry.id, agent_id: entry.agentId, summary: entry.summary,
-      covered_ids: entry.coveredIds, timestamp: entry.timestamp,
-    }),
-    coveredIds.length ? db.from('messages').delete().in('id', coveredIds) : Promise.resolve(),
-  ]).catch(err => console.warn(`[memory] Failed to persist summary: ${err.message}`));
+  // ✅ Fix: async IIFE pattern
+  (async () => {
+    try {
+      await db.from('summaries').insert({
+        id: entry.id, agent_id: entry.agentId, summary: entry.summary,
+        covered_ids: entry.coveredIds, timestamp: entry.timestamp,
+      });
+      if (coveredIds.length) {
+        await db.from('messages').delete().in('id', coveredIds);
+      }
+    } catch (e) {
+      console.warn(`[memory] Failed to persist summary: ${e.message}`);
+    }
+  })();
 }
 
 // ─── Clear history ────────────────────────────────────────────────────────────
@@ -334,15 +367,26 @@ function clearHistory(agentId = null) {
   if (agentId) {
     const ids = history.filter(m => m.agentId === agentId).map(m => m.id);
     history = history.filter(m => m.agentId !== agentId);
+
+    // ✅ Fix: async IIFE instead of .catch() chained on Supabase query
     if (ids.length) {
-      db.from('messages').delete().in('id', ids).catch(() => {});
+      (async () => {
+        try {
+          await db.from('messages').delete().in('id', ids);
+        } catch (e) {
+          console.warn(`[memory] clearHistory failed for ${agentId}: ${e.message}`);
+        }
+      })();
     }
   } else {
-    const ids = history.map(m => m.id);
     history = [];
-    if (ids.length) {
-      db.from('messages').delete().in('id', ids).catch(() => {});
-    }
+    (async () => {
+      try {
+        await db.from('messages').delete().neq('id', '');
+      } catch (e) {
+        console.warn(`[memory] clearHistory (global) failed: ${e.message}`);
+      }
+    })();
   }
 }
 
@@ -355,9 +399,10 @@ module.exports = {
   storeSummary,
   clearHistory,
   getContextHealth,
+  autoCompactIfNeeded,
   getHistory: (agentId = null, limit = MEMORY_CONSTANTS.DEFAULT_HISTORY_LIMIT) => {
     const safeLimit = limit || MEMORY_CONSTANTS.DEFAULT_HISTORY_LIMIT;
-    let h = agentId ? history.filter(m => m.agentId === agentId) : history;
+    const h = agentId ? history.filter(m => m.agentId === agentId) : history;
     return h.slice(-safeLimit);
   },
   getSummaries: () => summaries,

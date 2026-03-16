@@ -5,12 +5,14 @@
  */
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+const path = require('path');
 
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const { APP_CONSTANTS, PATH_CONSTANTS } = require('./src/constants');
 const db = require('./src/db');
+const sessions = require('./src/sessions');
 
 const logger = require('./src/logger');
 const memory = require('./src/memory');
@@ -68,7 +70,40 @@ app.post('/api/brain/model', (req, res) => {
 });
 
 // ── Agents ─────────────────────────────────────────────────────────────────────
-app.get('/api/agents', (req, res) => res.json(agents.getAll()));
+app.get('/api/agents', (req, res) => {
+  const { BRAIN_CONSTANTS } = require('./src/constants');
+  const brainConfig = brain.getConfig();
+
+  // Brain virtual agent — always first, not stored in Supabase
+  const brainAgent = {
+    id: 'brain',
+    name: 'Brain',
+    description: 'Central AI orchestrator. Manages tools, agents, and MCP servers.',
+    provider: 'copilot',
+    model: brainConfig.model,
+    active: brainConfig.available,
+    skills: [],          // Brain uses BRAIN_SYSTEM prompt, not skills array
+    contextNotes: '',
+    autoUpdateContext: false,
+    _isBrain: true,      // flag for frontend to handle specially
+    createdAt: 0,
+  };
+
+  res.json([brainAgent, ...agents.getAll()]);
+});
+// Also handle PUT /api/agents/brain to update Brain's model
+app.put('/api/agents/brain', (req, res) => {
+  const { model } = req.body;
+  if (model) brain.setModel(model);
+  const brainConfig = brain.getConfig();
+  res.json({
+    id: 'brain',
+    name: 'Brain',
+    model: brainConfig.model,
+    _isBrain: true,
+    ok: true,
+  });
+});
 app.post('/api/agents', (req, res) => res.status(201).json(agents.create(req.body)));
 app.put('/api/agents/:id', (req, res) => {
   const agent = agents.update(req.params.id, req.body);
@@ -257,7 +292,7 @@ app.post('/api/memory/summarize', async (req, res) => {
 });
 
 // ── Context health ─────────────────────────────────────────────────────────────
- 
+
 // GET /api/context/health?agentId=brain
 // Returns context utilization, health status, and compact recommendation
 app.get('/api/context/health', (req, res) => {
@@ -280,7 +315,7 @@ app.get('/api/tools', (req, res) => {
 });
 
 // ── Self-learn ─────────────────────────────────────────────────────────────────
- 
+
 // GET /api/lessons?type=...&priority=...&status=...&limit=50
 app.get('/api/lessons', (req, res) => {
   if (!selfLearn) return res.json({ lessons: [], count: 0, stats: {} });
@@ -298,20 +333,20 @@ app.get('/api/lessons', (req, res) => {
     stats: selfLearn.getStats ? selfLearn.getStats() : {},
   });
 });
- 
+
 // GET /api/lessons/promoted — only promoted (permanent rules)
 app.get('/api/lessons/promoted', (req, res) => {
   if (!selfLearn) return res.json({ lessons: [], count: 0 });
   const promoted = selfLearn.getPromotedLessons ? selfLearn.getPromotedLessons() : [];
   res.json({ lessons: promoted, count: promoted.length });
 });
- 
+
 // GET /api/lessons/stats
 app.get('/api/lessons/stats', (req, res) => {
   if (!selfLearn) return res.json({});
   res.json(selfLearn.getStats ? selfLearn.getStats() : {});
 });
- 
+
 // PATCH /api/lessons/:id — resolve or wont_fix a lesson
 app.patch('/api/lessons/:id', (req, res) => {
   if (!selfLearn) return res.status(503).json({ error: 'self-learn not available' });
@@ -323,24 +358,24 @@ app.patch('/api/lessons/:id', (req, res) => {
   if (!updated) return res.status(404).json({ error: 'Lesson not found' });
   res.json({ ok: true, lesson: updated });
 });
- 
+
 // DELETE /api/lessons — clear all
 app.delete('/api/lessons', (req, res) => {
   if (selfLearn?.clearLessons) selfLearn.clearLessons();
   res.json({ ok: true });
 });
- 
+
 // GET /api/lessons/workspace/:file — read workspace files
 app.get('/api/lessons/workspace/:file', (req, res) => {
   const allowed = ['LEARNINGS.md', 'ERRORS.md', 'FEATURE_REQUESTS.md'];
   const { file } = req.params;
   if (!allowed.includes(file)) return res.status(400).json({ error: 'Unknown file' });
- 
+
   const path = require('path');
   const fs = require('fs');
   const { PATH_CONSTANTS } = require('./src/constants');
   const filepath = path.join(PATH_CONSTANTS.BACKEND_ROOT, 'workspace', file);
- 
+
   if (!fs.existsSync(filepath)) return res.json({ content: '', exists: false });
   res.json({ content: fs.readFileSync(filepath, 'utf8'), exists: true, file });
 });
@@ -379,6 +414,83 @@ app.post('/api/telegram/disconnect', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── MCP Servers ────────────────────────────────────────────────────────────────
+const mcp = require('./src/mcp-manager');
+app.get('/api/mcp/servers', (req, res) => res.json(mcp.getAll()));
+
+app.post('/api/mcp/servers', (req, res) => {
+  const server = mcp.create(req.body);
+  res.status(201).json(server);
+});
+
+app.put('/api/mcp/servers/:id', (req, res) => {
+  const server = mcp.update(req.params.id, req.body);
+  if (!server) return res.status(404).json({ error: 'Not found' });
+  res.json(server);
+});
+
+app.delete('/api/mcp/servers/:id', (req, res) => {
+  const ok = mcp.remove(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
+app.post('/api/mcp/servers/:id/connect', async (req, res) => {
+  try {
+    const result = await mcp.connect(req.params.id);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/mcp/servers/:id/disconnect', async (req, res) => {
+  try {
+    await mcp.disconnect(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/mcp/servers/:id/tools', async (req, res) => {
+  const server = mcp.getById(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Not found' });
+  res.json({ tools: server.tools || [], toolCount: server.toolCount || 0 });
+});
+
+// ── Sessions ───────────────────────────────────────────────────────────────────
+
+// GET /api/sessions
+app.get('/api/sessions', (req, res) => {
+  res.json(sessions.getAll());
+});
+
+// POST /api/sessions — create new session
+app.post('/api/sessions', (req, res) => {
+  const session = sessions.create({ name: req.body.name });
+  res.status(201).json(session);
+});
+
+// PUT /api/sessions/:id — rename
+app.put('/api/sessions/:id', (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const s = sessions.rename(req.params.id, name);
+  if (!s) return res.status(404).json({ error: 'Not found' });
+  res.json(s);
+});
+
+// DELETE /api/sessions/:id — delete session + its messages
+app.delete('/api/sessions/:id', (req, res) => {
+  const { id } = req.params;
+  const ok = sessions.remove(id);
+  if (!ok) return res.status(id === 'brain' ? 403 : 404).json({ error: id === 'brain' ? 'Cannot delete default session' : 'Not found' });
+  // Also clear messages for this session
+  memory.clearHistory(id);
+  res.json({ ok: true });
+});
+
 // ─── WebSocket ─────────────────────────────────────────────────────────────────
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -386,6 +498,7 @@ const wss = new WebSocket.Server({ server });
 wss.on('connection', (ws) => {
   logger.registerClient(ws);
   telegram.registerClient(ws);
+  mcp.registerClient(ws);
   ws.send(JSON.stringify({ type: 'connected', message: 'Brain OS WebSocket ready' }));
 
   ws.on('message', async (raw) => {
@@ -395,17 +508,33 @@ wss.on('connection', (ws) => {
     if (msg.type === 'chat') {
       const { content, agentId = 'brain', requestId } = msg;
       if (!content?.trim()) return;
-      logger.info(agentId === 'brain' ? 'brain' : `agent:${agentId}`, `→ ${content.slice(0, APP_CONSTANTS.LOG_PREVIEW_LENGTH)}`);
+
+      logger.info(
+        agentId === 'brain' || agentId.startsWith('session-') ? 'brain' : `agent:${agentId}`,
+        `→ ${content.slice(0, APP_CONSTANTS.LOG_PREVIEW_LENGTH)}`
+      );
 
       const send = (payload) => ws.send(JSON.stringify({ ...payload, requestId }));
       const onToken = (token) => send({ type: 'chat_token', token });
-      const onDone = (content, stats) => send({ type: 'chat_done', stats });
+      const onDone = (c, stats) => {
+        send({ type: 'chat_done', stats });
+        // Touch session updatedAt so it bubbles to top of list
+        if (agentId.startsWith('session-')) sessions.touch(agentId);
+      };
       const onError = (err) => send({ type: 'chat_error', error: err.message });
       const onToolCall = (info) => send({ type: 'tool_call', ...info });
 
-      if (agentId === 'brain') {
-        await brain.chat({ userInput: content, agentId: 'brain', onToken, onDone, onError, onToolCall });
+      // Brain orchestrator handles:
+      //   - 'brain'          (default session)
+      //   - 'session-*'      (named sessions — isolated context, same Brain brain)
+      if (agentId === 'brain' || agentId.startsWith('session-')) {
+        await brain.chat({
+          userInput: content,
+          agentId,          // ← passes session ID so memory is isolated per session
+          onToken, onDone, onError, onToolCall,
+        });
       } else {
+        // Specialist agents (translator, dev-agent, etc.)
         const agent = agents.getById(agentId);
         if (!agent) { onError(new Error(`Agent '${agentId}' not found`)); return; }
         await agents.runAgent({ agentId, userInput: content, onToken, onDone, onError });
@@ -423,7 +552,10 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => logger.removeClient(ws));
+  ws.on('close', () => {
+    logger.removeClient(ws);
+    mcp.removeClient(ws);
+  });
 });
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
@@ -436,12 +568,25 @@ async function start() {
     process.exit(1);
   }
 
+  await sessions.init();
   await logger.init();
   await memory.init();
   await agents.init();
   await telegram.init(brain);
+  await mcp.init();
   brain.setModel(MODEL);
-  brain.checkOllama().catch(() => {});
+  await brain.loadBrainSkills();
+  brain.checkOllama().catch(() => { });
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    const fs = require('fs');
+    const indexPath = path.join(PATH_CONSTANTS.FRONTEND_DIST_DIR, 'index.html');
+    if (!fs.existsSync(indexPath)) {
+      return res.status(404).send('Frontend not built. Run: npm run build:frontend');
+    }
+    res.sendFile(indexPath);
+  });
 
   server.listen(PORT, () => {
     logger.info('system', `Brain OS on http://localhost:${PORT}`);

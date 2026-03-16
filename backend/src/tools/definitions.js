@@ -49,7 +49,7 @@ const TOOL_DEFINITIONS = [
         type: 'object',
         properties: {
           agent_id: { type: 'string', description: 'Agent ID (verify with list_agents first)' },
-          task:     { type: 'string', description: 'Task to send to the agent' },
+          task: { type: 'string', description: 'Task to send to the agent' },
         },
         required: ['agent_id', 'task'],
       },
@@ -64,7 +64,7 @@ const TOOL_DEFINITIONS = [
         type: 'object',
         properties: {
           agent_id: { type: 'string' },
-          action:   { type: 'string', enum: ['enable', 'disable'] },
+          action: { type: 'string', enum: ['enable', 'disable'] },
         },
         required: ['agent_id', 'action'],
       },
@@ -85,7 +85,7 @@ const TOOL_DEFINITIONS = [
               type: 'object',
               properties: {
                 agent_id: { type: 'string' },
-                task:     { type: 'string' },
+                task: { type: 'string' },
               },
               required: ['agent_id', 'task'],
             },
@@ -103,13 +103,13 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          name:         { type: 'string' },
-          description:  { type: 'string' },
-          provider:     { type: 'string', enum: ['copilot', 'claude', 'gemini', 'openrouter', 'openai'] },
-          model:        { type: 'string', description: 'e.g. gpt-5-mini, claude-sonnet-4-5' },
+          name: { type: 'string' },
+          description: { type: 'string' },
+          provider: { type: 'string', enum: ['copilot', 'claude', 'gemini', 'openrouter', 'openai'] },
+          model: { type: 'string', description: 'e.g. gpt-5-mini, claude-sonnet-4-5' },
           systemPrompt: { type: 'string' },
-          skills:       { type: 'array', items: { type: 'string' }, description: 'Instructions in English' },
-          apiKey:       { type: 'string', description: 'Leave empty to use env var' },
+          skills: { type: 'array', items: { type: 'string' }, description: 'Instructions in English' },
+          apiKey: { type: 'string', description: 'Leave empty to use env var' },
         },
         required: ['name', 'provider', 'model', 'systemPrompt'],
       },
@@ -123,15 +123,15 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          agent_id:     { type: 'string', description: 'Verify with list_agents first' },
-          name:         { type: 'string' },
-          description:  { type: 'string' },
-          provider:     { type: 'string', enum: ['copilot', 'claude', 'gemini', 'openrouter', 'openai'] },
-          model:        { type: 'string' },
+          agent_id: { type: 'string', description: 'Verify with list_agents first' },
+          name: { type: 'string' },
+          description: { type: 'string' },
+          provider: { type: 'string', enum: ['copilot', 'claude', 'gemini', 'openrouter', 'openai'] },
+          model: { type: 'string' },
           systemPrompt: { type: 'string' },
-          skills:       { type: 'array', items: { type: 'string' } },
+          skills: { type: 'array', items: { type: 'string' } },
           contextNotes: { type: 'string' },
-          active:       { type: 'boolean' },
+          active: { type: 'boolean' },
         },
         required: ['agent_id'],
       },
@@ -164,7 +164,7 @@ const TOOL_DEFINITIONS = [
         type: 'object',
         properties: {
           file_path: { type: 'string' },
-          encoding:  { type: 'string', enum: ['utf8', 'base64'], description: 'Default: utf8' },
+          encoding: { type: 'string', enum: ['utf8', 'base64'], description: 'Default: utf8' },
         },
         required: ['file_path'],
       },
@@ -179,8 +179,8 @@ const TOOL_DEFINITIONS = [
         type: 'object',
         properties: {
           file_path: { type: 'string' },
-          content:   { type: 'string' },
-          mode:      { type: 'string', enum: ['overwrite', 'append'], description: 'Default: overwrite' },
+          content: { type: 'string' },
+          mode: { type: 'string', enum: ['overwrite', 'append'], description: 'Default: overwrite' },
         },
         required: ['file_path', 'content'],
       },
@@ -196,10 +196,10 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          url:        { type: 'string' },
-          method:     { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE'], description: 'Default: GET' },
-          headers:    { type: 'object' },
-          body:       { type: 'string', description: 'JSON string for POST/PUT' },
+          url: { type: 'string' },
+          method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE'], description: 'Default: GET' },
+          headers: { type: 'object' },
+          body: { type: 'string', description: 'JSON string for POST/PUT' },
           timeout_ms: { type: 'number', description: `Default: ${TOOL_CONSTANTS.HTTP_DEFAULT_TIMEOUT_MS}` },
         },
         required: ['url'],
@@ -218,7 +218,7 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          query:       { type: 'string' },
+          query: { type: 'string' },
           max_results: { type: 'number', description: 'Default: 5, max: 10' },
         },
         required: ['query'],
@@ -240,7 +240,7 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          url:     { type: 'string', description: 'Full URL to navigate to' },
+          url: { type: 'string', description: 'Full URL to navigate to' },
           extract: { type: 'string', enum: ['text', 'screenshot'], description: 'What to extract (default: text)' },
           wait_ms: { type: 'number', description: 'Milliseconds to wait for JS to load (default: 2000)' },
         },
@@ -260,8 +260,8 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          query:       { type: 'string', description: 'Search query' },
-          engine:      { type: 'string', enum: ['google', 'duckduckgo', 'bing'], description: 'Default: google' },
+          query: { type: 'string', description: 'Search query' },
+          engine: { type: 'string', enum: ['google', 'duckduckgo', 'bing'], description: 'Default: google' },
           max_results: { type: 'number', description: 'Max results to return (default: 5)' },
         },
         required: ['query'],
@@ -351,7 +351,7 @@ const TOOL_DEFINITIONS = [
       parameters: {
         type: 'object',
         properties: {
-          id:     { type: 'string', description: 'Lesson ID from get_lessons' },
+          id: { type: 'string', description: 'Lesson ID from get_lessons' },
           status: { type: 'string', enum: ['resolved', 'wont_fix'], description: 'Default: resolved' },
         },
         required: ['id'],
@@ -402,6 +402,74 @@ const TOOL_DEFINITIONS = [
             description: 'Agent ID to add the skill instructions to. Use list_agents to find IDs.',
           },
         },
+      },
+    },
+  },
+
+  // ── MCP ──────────────────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'list_mcp_servers',
+      description: 'List all configured MCP servers, their connection status, and available tools.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_mcp_server',
+      description: [
+        'Create a new MCP server configuration.',
+        'Use this when user wants to connect to an external service (Monday, Slack, GitHub, etc.).',
+        'After creating, always call mcp_connect to discover available tools.',
+        'Monday.com example: url="https://mcp.monday.com/mcp", authType="bearer", authToken="<user_token>"',
+      ].join(' '),
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Display name, e.g. "Monday.com"' },
+          url: { type: 'string', description: 'MCP server URL. Monday: https://mcp.monday.com/mcp' },
+          authType: { type: 'string', enum: ['bearer', 'api_key', 'basic', 'none'], description: 'Auth method. Monday uses "bearer"' },
+          authToken: { type: 'string', description: 'API token / Bearer token' },
+          description: { type: 'string', description: 'Optional description' },
+          type: { type: 'string', description: 'Provider type hint, e.g. "monday", "slack", "github", "custom"' },
+        },
+        required: ['name', 'url'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_connect',
+      description: 'Connect to a configured MCP server and discover its available tools. Run after create_mcp_server.',
+      parameters: {
+        type: 'object',
+        properties: {
+          server_id: { type: 'string', description: 'Server ID from list_mcp_servers' },
+          server_name: { type: 'string', description: 'Server name (alternative to ID)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'mcp_call',
+      description: [
+        'Call a tool on a connected MCP server.',
+        'Use list_mcp_servers to see available servers and their tools.',
+        'Example: { server: "Monday.com", tool: "get_boards", args: {} }',
+      ].join(' '),
+      parameters: {
+        type: 'object',
+        properties: {
+          server: { type: 'string', description: 'Server name (from list_mcp_servers)' },
+          tool: { type: 'string', description: 'Tool name to invoke' },
+          args: { type: 'object', description: 'Arguments for the tool' },
+        },
+        required: ['server', 'tool'],
       },
     },
   },
