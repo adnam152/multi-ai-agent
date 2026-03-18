@@ -496,4 +496,291 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-module.exports = { TOOL_DEFINITIONS };
+// ── ORCHESTRATOR_TOOL_DEFINITIONS ───────────────────────────────────────────
+// Add these to TOOL_DEFINITIONS so Brain can call them
+
+const ORCHESTRATOR_TOOL_DEFINITIONS = [
+
+  // ── Agents ──────────────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_agent',
+      description: 'Create a new specialist AI agent. Use this when user asks to create/add an agent.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Display name' },
+          description: { type: 'string', description: 'What this agent specializes in' },
+          provider: { type: 'string', enum: ['copilot', 'openai', 'claude', 'gemini', 'openrouter'] },
+          model: { type: 'string', description: 'Model ID, e.g. gpt-5-mini, claude-haiku-4-5, gpt-5.1-codex' },
+          systemPrompt: { type: 'string', description: 'System prompt / persona (write in English)' },
+          skills: { type: 'array', items: { type: 'string' }, description: 'Array of skill instruction strings' },
+        },
+        required: ['name', 'systemPrompt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_agent',
+      description: 'Update an existing agent. Use list_agents first to get IDs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'Agent ID from list_agents (use "brain" for Brain)' },
+          name: { type: 'string' },
+          description: { type: 'string' },
+          provider: { type: 'string' },
+          model: { type: 'string' },
+          systemPrompt: { type: 'string' },
+          skills: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['agent_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_agent',
+      description: 'Delete a specialist agent permanently. Cannot delete Brain.',
+      parameters: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'Agent ID to delete' },
+        },
+        required: ['agent_id'],
+      },
+    },
+  },
+
+  // ── Cron Jobs ─────────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'list_cron_jobs',
+      description: 'List all scheduled cron jobs with schedules, status, last run info.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_cron_job',
+      description: 'Create a scheduled job. Call ONCE per creation — do not call list_cron_jobs again after this succeeds.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Job name, e.g. "Morning News Summary"' },
+          description: { type: 'string', description: 'What this job does' },
+          schedule: { type: 'string', description: 'Cron expression. Examples: "0 9 * * *" (daily 9am), "*/30 * * * *" (every 30min), "0 8 * * 1-5" (Mon-Fri 8am)' },
+          prompt: { type: 'string', description: 'Task prompt sent to agent when triggered' },
+          agent_id: { type: 'string', description: 'Agent ID. Use "brain" for Brain orchestrator.' },
+          sendToTelegram: { type: 'boolean', description: 'Send result to Telegram. Default: false' },
+          enabled: { type: 'boolean', description: 'Enable immediately. Default: true' },
+        },
+        required: ['name', 'schedule', 'prompt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_cron_job',
+      description: 'Update an existing cron job (change schedule, prompt, enable/disable). Use list_cron_jobs to get IDs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Job ID from list_cron_jobs' },
+          name: { type: 'string' },
+          schedule: { type: 'string' },
+          prompt: { type: 'string' },
+          agent_id: { type: 'string' },
+          sendToTelegram: { type: 'boolean' },
+          enabled: { type: 'boolean' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_cron_job',
+      description: 'Delete a cron job permanently.',
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Job ID to delete' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_cron_job',
+      description: 'Run a cron job immediately (ignores schedule). Result appears in Tracking tab.',
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Job ID to trigger now' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+
+  // ── Group Debates ─────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'list_debates',
+      description: 'List all group debate sessions with status, topic, agent count.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_debate',
+      description: 'Create a multi-agent debate session. After creating, call start_debate to begin.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Session name, e.g. "AI Policy Debate"' },
+          topic: { type: 'string', description: 'The question or topic to debate' },
+          agents: {
+            type: 'array',
+            description: 'At least 2 agents. Each needs name, role, systemPrompt, provider, model.',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                role: { type: 'string', description: 'e.g. "Climate Scientist", "Economist"' },
+                avatar: { type: 'string', description: 'Emoji, e.g. "🧑‍🔬"' },
+                systemPrompt: { type: 'string' },
+                provider: { type: 'string', enum: ['copilot', 'openai', 'claude', 'gemini', 'openrouter'] },
+                model: { type: 'string' },
+                color: { type: 'string', description: 'Hex color e.g. "#4f72ff"' },
+              },
+              required: ['name', 'systemPrompt'],
+            },
+          },
+          autoSynthesize: { type: 'boolean', description: 'Brain detects consensus and writes final synthesis. Default: true' },
+          allowTools: { type: 'boolean', description: 'Agents can search web/http. Default: true' },
+          roundDelayMs: { type: 'number', description: 'Ms between agent turns. Default: 500' },
+        },
+        required: ['name', 'topic', 'agents'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'start_debate',
+      description: 'Start a debate session. Agents begin discussing immediately.',
+      parameters: {
+        type: 'object',
+        properties: {
+          session_id: { type: 'string', description: 'Debate session ID from list_debates or create_debate' },
+        },
+        required: ['session_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_debate',
+      description: 'Stop a running debate session.',
+      parameters: {
+        type: 'object',
+        properties: {
+          session_id: { type: 'string' },
+        },
+        required: ['session_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_debate',
+      description: 'Delete a debate session and all its messages.',
+      parameters: {
+        type: 'object',
+        properties: {
+          session_id: { type: 'string' },
+        },
+        required: ['session_id'],
+      },
+    },
+  },
+
+  // ── MCP Servers ───────────────────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_mcp_server',
+      description: 'Register a new MCP server. After registering, call connect_mcp_server to activate it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Display name e.g. "GitHub MCP"' },
+          command: { type: 'string', description: 'Command to start server e.g. "npx @modelcontextprotocol/server-github"' },
+          args: { type: 'array', items: { type: 'string' }, description: 'Command arguments' },
+          env: { type: 'object', description: 'Environment variables e.g. {"GITHUB_TOKEN": "..."}' },
+        },
+        required: ['name', 'command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'connect_mcp_server',
+      description: 'Connect to an MCP server and load its tools. Use list_mcp_servers to get IDs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          server_id: { type: 'string', description: 'MCP server ID' },
+        },
+        required: ['server_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'disconnect_mcp_server',
+      description: 'Disconnect from an MCP server.',
+      parameters: {
+        type: 'object',
+        properties: {
+          server_id: { type: 'string' },
+        },
+        required: ['server_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_mcp_server',
+      description: 'Remove an MCP server registration entirely.',
+      parameters: {
+        type: 'object',
+        properties: {
+          server_id: { type: 'string' },
+        },
+        required: ['server_id'],
+      },
+    },
+  },
+];
+
+module.exports = { TOOL_DEFINITIONS, ORCHESTRATOR_TOOL_DEFINITIONS };

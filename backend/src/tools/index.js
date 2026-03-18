@@ -18,6 +18,8 @@
 
 const { TOOL_DEFINITIONS } = require('./definitions');
 const { executeTool, executeToolsParallel } = require('./executor');
+const { ORCHESTRATOR_TOOL_DEFINITIONS } = require('./definitions');
+TOOL_DEFINITIONS.push(...ORCHESTRATOR_TOOL_DEFINITIONS);
 
 module.exports = {
   TOOL_DEFINITIONS,
