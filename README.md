@@ -60,7 +60,13 @@ copilot-api start
 # → Listening at http://localhost:4141
 ```
 
-### 3. Cấu hình `.env`
+### 3. Cài đặt agent-browser (cho Agent Browser tool)
+
+```bash
+npm install -g agent-browser
+```
+
+### 4. Cấu hình `.env`
 
 ```bash
 cp .env.example .env
@@ -384,17 +390,6 @@ node backend/server.js --port 3399
 **Group debate timeout:**
 ```
 → Copilot-api cần thời gian cho tool calls
-→ Synthesis dùng 2 retries với 120s timeout
+→ Synthesis dùng 2 retries with 120s timeout
 → Kiểm tra log: [INFO] [group-chat] ...
 ```
-
----
-
-## Roadmap
-
-- ✅ Phase 1: Core system + Brain orchestrator
-- ✅ Phase 2: Tool calling (18 tools), MCP integration
-- ✅ Phase 3: Task Tracking, Group Debate, Cron Jobs
-- ✅ Phase 4: Self-learning, per-agent skills, context notes
-- ⬜ Phase 5: Multi-modal (image input)
-- ⬜ Phase 6: Content pipeline automation

@@ -144,7 +144,6 @@ function TaskDetail({ task, onStop, onClose, now }) {
   }, [events.length, autoScroll])
 
   const status   = STATUS_CFG[task.status] || STATUS_CFG.done
-  // Use the live `now` prop so duration ticks every second while running
   const startedAt = Number(task.startedAt || 0)
   const endedAt   = task.endedAt ? Number(task.endedAt) : null
   const duration  = endedAt ? endedAt - startedAt : (now || Date.now()) - startedAt
@@ -193,7 +192,7 @@ function TaskDetail({ task, onStop, onClose, now }) {
         <div ref={endRef} />
       </div>
 
-      {/* Final result — shown when task is done/error/stopped */}
+      {/* Final result */}
       {task.status !== 'running' && task.result && (
         <div style={{ borderTop: '2px solid var(--border)', flexShrink: 0, maxHeight: 280, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '9px 18px', background: 'var(--sidebar)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -289,6 +288,7 @@ export default function TrackingTab({ wsMessages }) {
     if (msg.type === 'tracking_task_start') {
       setTasks(prev => {
         if (prev.find(t => t.id === msg.task?.id)) return prev
+        // Newest task prepended to top
         return [msg.task, ...prev]
       })
       if (msg.task?.id) setSelectedId(msg.task.id)
@@ -326,6 +326,8 @@ export default function TrackingTab({ wsMessages }) {
     })
   }
 
+  // Always show newest first
+  const sortedTasks = [...tasks].sort((a, b) => (Number(b.startedAt) || 0) - (Number(a.startedAt) || 0))
   const selectedTask  = tasks.find(t => t.id === selectedId) || null
   const runningCount  = tasks.filter(t => t.status === 'running').length
 
@@ -355,15 +357,15 @@ export default function TrackingTab({ wsMessages }) {
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Task list */}
+        {/* Task list — newest first */}
         <div style={{ width: 290, minWidth: 290, borderRight: '1px solid var(--border)', background: 'var(--sidebar)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {tasks.length === 0 && (
+          {sortedTasks.length === 0 && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', gap: 10, padding: 24 }}>
               <div style={{ fontSize: 36, opacity: .2 }}>📡</div>
               <p style={{ fontSize: 14, textAlign: 'center' }}>No tasks yet. Start a chat to see tracking here.</p>
             </div>
           )}
-          {tasks.map(task => (
+          {sortedTasks.map(task => (
             <TaskCard key={task.id} task={task} isSelected={task.id === selectedId} now={now}
               onClick={() => setSelectedId(task.id)} onStop={handleStop} />
           ))}

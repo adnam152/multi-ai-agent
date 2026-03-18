@@ -4,6 +4,7 @@
 
 const logger = require('../logger');
 const { TOOL_CONSTANTS } = require('../constants');
+const orchestrator = require('./orchestrator');
 
 const TOOL_MODULES = {
   // System
@@ -59,7 +60,23 @@ async function executeTool(toolCall) {
   const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
 
   const getImpl = TOOL_MODULES[name];
+
+  // Fallback: route to orchestrator for cron/debate/mcp management tools
   if (!getImpl) {
+    if (orchestrator.TOOL_NAMES.has(name)) {
+      try {
+        const preview = JSON.stringify(args).slice(0, TOOL_CONSTANTS.TOOL_LOG_ARGS_PREVIEW_LENGTH);
+        logger.debug('tools', `🔧 [orch] ${name}(${preview})`);
+        const result = await orchestrator.execute(name, args);
+        const resultPreview = JSON.stringify(result).slice(0, TOOL_CONSTANTS.TOOL_LOG_RESULT_PREVIEW_LENGTH);
+        logger.debug('tools', `✅ ${name} → ${resultPreview}`);
+        return result;
+      } catch (e) {
+        logger.error('tools', `❌ ${name} failed: ${e.message}`);
+        return { error: `Tool "${name}" failed: ${e.message}` };
+      }
+    }
+
     logger.warn('tools', `Unknown tool: ${name}`);
     return { error: `Unknown tool: "${name}". Available: ${Object.keys(TOOL_MODULES).join(', ')}` };
   }
