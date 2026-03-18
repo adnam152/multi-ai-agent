@@ -1,17 +1,19 @@
 /**
  * tools/mcp.js — MCP tools for Brain
+ *
+ * Monday.com uses the official Hosted MCP server at https://mcp.monday.com/mcp
+ * — treat it as any other standard MCP server, use mcp_call normally.
+ * Auth: bearer (Authorization: Bearer <token>)
  */
 
 async function list_mcp_servers() {
   const mcp = require('../mcp-manager');
   const all = mcp.getAll();
 
-  // Auto-reconnect servers with 0 tools to refresh discovery
+  // Auto-reconnect servers with 0 tools
   for (const s of all) {
     if (s.connected && s.toolCount === 0) {
-      try {
-        await mcp.connect(s.id);
-      } catch { /* ignore */ }
+      try { await mcp.connect(s.id); } catch { /* ignore */ }
     }
   }
 
@@ -29,15 +31,19 @@ async function list_mcp_servers() {
       tools: s.tools || [],
     })),
     instruction: refreshed.some(s => s.tools?.length > 0)
-      ? 'Use EXACT tool names listed above in mcp_call. Do NOT guess tool names.'
+      ? 'Use EXACT tool names listed above in mcp_call.'
       : 'No tools discovered yet. Use mcp_connect to connect a server.',
   };
 }
 
-async function create_mcp_server({ name, url, authType = 'bearer', authToken = '', description = '', type = 'custom' }) {
+async function create_mcp_server({
+  name, url, authType = 'bearer', authToken = '',
+  description = '', type = 'custom',
+}) {
   const mcp = require('../mcp-manager');
 
-  if (!name || !url) return { error: 'name and url are required' };
+  if (!name) return { error: 'name is required' };
+  if (!url)  return { error: 'url is required' };
 
   const existing = mcp.getByName(name);
   if (existing) {
@@ -70,7 +76,9 @@ async function mcp_connect({ server_id, server_name }) {
     : mcp.getByName(server_name || '');
 
   if (!srv) {
-    return { error: `Server not found: "${server_id || server_name}". Use create_mcp_server to add it first.` };
+    return {
+      error: `Server not found: "${server_id || server_name}". Use create_mcp_server to add it first.`,
+    };
   }
 
   try {
@@ -81,10 +89,9 @@ async function mcp_connect({ server_id, server_name }) {
       connected: result.connected,
       toolCount: result.toolCount,
       tools: result.tools,
-      // Make tool names very explicit for Brain
-      available_tools: result.tools.length > 0
-        ? `Available tools (use EXACTLY these names): ${result.tools.join(', ')}`
-        : 'No tools returned — check token permissions',
+      available_tools: result.tools?.length > 0
+        ? `Available tools (use EXACTLY these names in mcp_call): ${result.tools.join(', ')}`
+        : 'No tools returned — check token permissions or server URL',
     };
   } catch (e) {
     return { error: `Connect failed: ${e.message}` };
@@ -94,7 +101,6 @@ async function mcp_connect({ server_id, server_name }) {
 async function mcp_call({ server, tool, args = {} }) {
   const mcp = require('../mcp-manager');
 
-  // Verify tool exists before calling
   const srv = mcp.getByName(server);
   if (srv && srv.tools?.length > 0 && !srv.tools.includes(tool)) {
     return {
@@ -107,4 +113,24 @@ async function mcp_call({ server, tool, args = {} }) {
   return mcp.callTool({ serverName: server, toolName: tool, args });
 }
 
-module.exports = { list_mcp_servers, create_mcp_server, mcp_connect, mcp_call };
+
+async function get_monday_token() {
+  const mcp = require('../mcp-manager');
+  const token = mcp.getMondayToken();
+  if (!token) {
+    return {
+      error: 'No Monday.com token saved.',
+      fix: 'Go to McpTab → find Monday.com entry → Edit → paste API token → Save.',
+    };
+  }
+  return {
+    token,
+    headers: {
+      Authorization: token,
+      'Content-Type': 'application/json',
+      'API-Version': '2023-10',
+    },
+  };
+}
+
+module.exports = { list_mcp_servers, create_mcp_server, mcp_connect, mcp_call, get_monday_token };

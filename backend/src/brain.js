@@ -8,7 +8,8 @@
  *   - Per-session memory isolation (agentId scoping)
  *   - Auto-compact context when sessions get long
  *   - Self-learning lesson injection
- *   - Retry on timeout
+ *   - Retry on timeout with exponential backoff
+ *   - Graceful degradation on consecutive network errors
  */
 
 const logger = require('./logger');
@@ -48,8 +49,6 @@ const KNOWN_MODELS = [
 ];
 
 // ─── Persistent Brain skills ───────────────────────────────────────────────────
-// Stored in Supabase config table, injected into BRAIN_SYSTEM at chat time.
-// Applies to every session — user sets once, persists across restarts.
 
 let brainSkills = [];
 
@@ -65,7 +64,7 @@ async function loadBrainSkills() {
       brainSkills = JSON.parse(data.value);
       logger.info('brain', `Loaded ${brainSkills.length} persistent skill(s)`);
     }
-  } catch { /* first run — no skills yet, start empty */ }
+  } catch { /* first run — no skills yet */ }
 }
 
 function getSkills() {
@@ -112,6 +111,17 @@ const BRAIN_SYSTEM = `You are Brain — the central AI orchestrator of Brain OS.
 - Delegate specialized work via call_agent only after verifying IDs with list_agents.
 - NEVER call call_agent with a guessed agent ID — always list_agents first.
 
+## CRITICAL: When to use call_agent vs list_agents
+
+**NEVER use call_agent to query an agent's own configuration, skills, rules, or lessons.**
+list_agents already returns the full agent config including skills array.
+Reading an agent's skills = use list_agents result directly. No call_agent needed.
+
+call_agent is ONLY for: delegating a real task (translation, coding, analysis) to a specialist.
+
+Wrong: call_agent({ agent_id: "my-agent", task: "what are your skills?" })
+Right: list_agents() → read skills from the returned agents array
+
 ## Response Guidelines
 
 - Default language: Vietnamese (unless user writes in another language).
@@ -133,7 +143,7 @@ When user wants to create an agent, follow these steps:
 ## Tool Usage
 
 - search_web + browse_web: for current/external information
-- call_agent: route specialized work (translation, coding, research)
+- call_agent: route specialized WORK tasks (translation, coding, research) — NOT config queries
 - run_pipeline: parallel research across multiple agents
 - save_lesson: record patterns that should persist across sessions
 - Always prefer parallel tool calls when tasks are independent
@@ -146,19 +156,37 @@ Sub-agents do NOT have access to mcp_call or http_request.
 Correct workflow for MCP data requests:
 1. list_mcp_servers() → get exact available tool names
 2. mcp_call() → fetch data using EXACT tool name from step 1
-3. list_agents() → check if Brain (id: "brain") has formatting skills
-4. Apply Brain's formatting skills to the output
-5. Brain formats the output itself — never delegate MCP formatting to sub-agents
+3. Format output applying Brain's formatting skills
+4. Brain formats the output itself — never delegate MCP formatting to sub-agents
 
 **NEVER guess tool names.** If mcp_call returns tool-not-found:
 → call mcp_connect to refresh, then retry with the correct name.
 
-When user says "update skill then call Monday":
-- list_agents → read current Brain skills
-- update_agent(brain) with merged skills (keep existing + add new)
-- list_mcp_servers → get tool names
-- mcp_call → get data
-- Format output applying the new skill immediately
+## Monday.com Rules (CRITICAL)
+
+Monday.com API is called via **http_request** directly to 'https://api.monday.com/v2'.
+Token stored in MCP config — always call 'get_monday_token()' first to get headers.
+
+**EXACT WORKFLOW — follow precisely:**
+
+Step 1: 'get_monday_token()' → save 'result.headers' object.
+
+Step 2: ITEMS QUERY — http_request(url: 'https://api.monday.com/v2', method: 'POST', headers: result.headers, body: JSON.stringify({query: 'query($b:ID!){boards(ids:[$b]){columns{id title type}groups{id title items_page(limit:50){cursor items{id name state created_at updated_at group{id title}column_values{id text value type}}}}}}}', variables: { b: 'BOARD_ID' }}))
+
+Step 3: SUBITEMS QUERY — collect item IDs from step 2, then: http_request(url: 'https://api.monday.com/v2', method: 'POST', headers: result.headers, body: JSON.stringify({query: 'query($ids:[ID!]!){items(ids:$ids){id name subitems{id name column_values{id text value type}}}}', variables: { ids: ['ID1','ID2','ID3'] }}))
+
+Step 4: Merge items + subitems. Render HTML per MONDAY DISPLAY RULE skill — **immediately, no questions**.
+
+**DISPLAY RULE — always apply, never ask user what format:**
+Use MONDAY DISPLAY RULE skill. Output HTML block only.
+
+**If complexity error on step 2:** reduce limit 50→25→10, retry same query.
+
+**FORBIDDEN:**
+- ❌ NEVER ask user 'bạn muốn xuất theo dạng nào?' — always render HTML immediately
+- ❌ NEVER use markdown table for Monday data
+- ❌ NEVER call create_mcp_server for Monday
+- ❌ NEVER use mcp_call or all_monday_api for Monday data fetching
 
 ## Skill Management Rules (CRITICAL)
 
@@ -207,7 +235,27 @@ function setModel(model) {
 
 function getConfig() { return { ...config }; }
 
-// ─── Retry wrapper ────────────────────────────────────────────────────────────
+// ─── Classify error type ──────────────────────────────────────────────────────
+
+function isNetworkError(e) {
+  const msg = (e.message || '').toLowerCase();
+  const cause = (e.cause?.message || '').toLowerCase();
+  return (
+    msg.includes('fetch failed') ||
+    msg.includes('econnreset') ||
+    msg.includes('connect timeout') ||
+    msg.includes('connection refused') ||
+    cause.includes('econnreset') ||
+    cause.includes('connect timeout') ||
+    cause.includes('read econnreset')
+  );
+}
+
+function isRetryable500(e) {
+  return e.message?.includes('500') && isNetworkError(e);
+}
+
+// ─── Retry wrapper with exponential backoff ───────────────────────────────────
 
 async function fetchWithRetry(url, opts, maxRetries = 2) {
   let lastError;
@@ -216,13 +264,10 @@ async function fetchWithRetry(url, opts, maxRetries = 2) {
       return await fetch(url, opts);
     } catch (e) {
       lastError = e;
-      const isTimeout =
-        e.message?.includes('timeout') ||
-        e.message?.includes('fetch failed') ||
-        e.cause?.message?.includes('Connect Timeout');
-      if (!isTimeout || attempt === maxRetries) throw e;
-      const delay = 1500 * (attempt + 1);
-      logger.warn('brain', `Timeout (attempt ${attempt + 1}/${maxRetries + 1}), retry in ${delay}ms...`);
+      const shouldRetry = isNetworkError(e);
+      if (!shouldRetry || attempt === maxRetries) throw e;
+      const delay = 1500 * Math.pow(2, attempt); // 1.5s, 3s
+      logger.warn('brain', `Network error (attempt ${attempt + 1}/${maxRetries + 1}): ${e.message}. Retry in ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
@@ -230,7 +275,6 @@ async function fetchWithRetry(url, opts, maxRetries = 2) {
 }
 
 // ─── Prune large tool results before sending to API ──────────────────────────
-// Prevents payload bloat that causes timeouts on copilot-api
 
 function pruneLoopMessages(messages) {
   const TOOL_MAX = 1500;
@@ -244,7 +288,6 @@ function pruneLoopMessages(messages) {
 
     let content = m.content;
     if (typeof content === 'string' && content.length > TOOL_MAX) {
-      // Shrink search results
       try {
         const parsed = JSON.parse(content);
         if (parsed?.results?.length > SEARCH_MAX) {
@@ -295,7 +338,10 @@ async function callWithTools(messages, model) {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`copilot-api error ${res.status}: ${err.slice(0, 200)}`);
+    const error = new Error(`copilot-api error ${res.status}: ${err.slice(0, 200)}`);
+    // Attach status for caller to inspect
+    error.statusCode = res.status;
+    throw error;
   }
   const data = await res.json();
   return data.choices[0];
@@ -392,10 +438,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   // Auto-compact context silently if session is getting long
   await memory.autoCompactIfNeeded(agentId, (msgs) => call(msgs));
 
-  // Build system prompt:
-  //   BRAIN_SYSTEM
-  //   + Brain's persistent skills (global, all sessions)
-  //   + promoted lessons from self-learning
+  // Build system prompt
   let selfLearn;
   try { selfLearn = require('./self-learn'); } catch { selfLearn = null; }
 
@@ -405,13 +448,14 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     ? '\n\n## Persistent Brain Skills\n' +
     brainSkills.map((s, i) => `${i + 1}. ${s}`).join('\n')
     : '';
-    
-  const session = require('./sessions').getById(agentId)
-  const sessionCtx = session?.systemContext?.trim()
-    ? `\n\n## Session Context\n${session.systemContext}` : ''
-  const fullSystemPrompt = BRAIN_SYSTEM + skillsSection + sessionCtx + lessonsContext
 
-  // Assemble prompt with context (head/tail preservation, token budget)
+  const session = require('./sessions').getById(agentId);
+  const sessionCtx = session?.systemContext?.trim()
+    ? `\n\n## Session Context\n${session.systemContext}` : '';
+
+  const fullSystemPrompt = BRAIN_SYSTEM + skillsSection + sessionCtx + lessonsContext;
+
+  // Assemble prompt with context
   const assembled = memory.assemblePrompt({
     currentInput: userInput,
     agentId,
@@ -421,7 +465,6 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
 
   logger.debug('brain', `Chat start. agentId=${agentId}, ctx=${assembled.stats.selectedMessages} msgs, ~${assembled.stats.estimatedTokens} tokens`);
 
-  // Store user message
   memory.store('user', userInput, agentId);
 
   const loopMessages = [
@@ -431,14 +474,11 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   ];
 
   // ─── Tool calling loop ─────────────────────────────────────────────────────
-  //
-  // When model returns message with BOTH content AND tool_calls:
-  //   content = intermediate thought (not the final answer)
-  //   tool_calls = must be executed before responding
-  //
-  // We only stream to the user when there are NO tool_calls in the response.
-
   const MAX_LOOPS = BRAIN_CONSTANTS.TOOL_LOOP_LIMIT;
+
+  // Track consecutive network errors — stop early if copilot-api is down
+  let consecutiveNetworkErrors = 0;
+  const MAX_CONSECUTIVE_NETWORK_ERRORS = 2;
 
   for (let loop = 1; loop <= MAX_LOOPS; loop++) {
     logger.debug('brain', `Tool loop ${loop}/${MAX_LOOPS}`);
@@ -446,8 +486,30 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
     let choice;
     try {
       choice = await callWithTools(loopMessages, config.model);
+      // Reset counter on success
+      consecutiveNetworkErrors = 0;
     } catch (e) {
       logger.error('brain', `Loop ${loop} error: ${e.message}`);
+
+      // Network/copilot-api down — don't keep looping
+      if (isNetworkError(e) || isRetryable500(e)) {
+        consecutiveNetworkErrors++;
+        if (consecutiveNetworkErrors >= MAX_CONSECUTIVE_NETWORK_ERRORS) {
+          logger.warn('brain', `${consecutiveNetworkErrors} consecutive network errors — stopping loop`);
+          onError(new Error(
+            `copilot-api không phản hồi (${consecutiveNetworkErrors} lần liên tiếp).\n` +
+            `Nguyên nhân: ${e.cause?.message || e.message}\n` +
+            `Thử lại sau vài giây hoặc kiểm tra kết nối mạng.`
+          ));
+          return;
+        }
+        // Wait before retrying this loop iteration
+        const delay = 2000 * consecutiveNetworkErrors;
+        logger.warn('brain', `Network error, waiting ${delay}ms before continuing...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue; // retry same loop index
+      }
+
       onError(e);
       return;
     }
@@ -462,7 +524,6 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
         memory.store('assistant', msg.content, agentId);
         onDone(msg.content, assembled.stats);
       } else {
-        // Empty content — fall back to streaming
         await streamChat({
           messages: loopMessages,
           model: config.model,
@@ -491,7 +552,6 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
       );
     }
 
-    // Add assistant message (required by spec before tool results)
     loopMessages.push(msg);
 
     // Execute all tool calls in parallel
@@ -507,7 +567,6 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
       }))
     );
 
-    // Append tool results
     msg.tool_calls.forEach((tc, i) => {
       loopMessages.push({
         role: 'tool',
@@ -515,7 +574,6 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
         content: JSON.stringify(results[i]),
       });
     });
-    // Continue loop
   }
 
   // ── Loop limit hit → force final response ─────────────────────────────────
@@ -532,7 +590,7 @@ async function chat({ userInput, agentId = 'brain', onToken, onDone, onError, on
   });
 }
 
-// ─── Summarize history (for compact button) ────────────────────────────────────
+// ─── Summarize history ────────────────────────────────────────────────────────
 
 async function summarizeHistory(agentId = 'brain') {
   const history = memory.getHistory(agentId, BRAIN_CONSTANTS.SUMMARY_HISTORY_LIMIT);

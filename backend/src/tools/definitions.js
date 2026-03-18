@@ -192,7 +192,13 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'http_request',
-      description: 'Make an HTTP request to an external URL.',
+      description: [
+        'Make an HTTP request to an external URL.',
+        'USE THIS for Monday.com API calls: POST to https://api.monday.com/v2 with headers',
+        '{ "Authorization": "<token>", "Content-Type": "application/json", "API-Version": "2023-10" }',
+        'and body { "query": "...", "variables": {...} }.',
+        'NEVER use mcp_call for Monday.com data.',
+      ].join(' '),
       parameters: {
         type: 'object',
         properties: {
@@ -289,14 +295,14 @@ const TOOL_DEFINITIONS = [
           type: {
             type: 'string',
             enum: [
-              'pattern',          // successful behavior to repeat
-              'user_preference',  // how this user likes things done
-              'routing',          // which agent handles which task type
-              'fact',             // factual info to remember
-              'tool_error',       // tool failure to avoid repeating
-              'feature_request',  // something user wants that doesn't exist yet
-              'knowledge_gap',    // something Brain didn't know but should
-              'best_practice',    // better approach discovered
+              'pattern',
+              'user_preference',
+              'routing',
+              'fact',
+              'tool_error',
+              'feature_request',
+              'knowledge_gap',
+              'best_practice',
             ],
           },
           priority: {
@@ -391,7 +397,7 @@ const TOOL_DEFINITIONS = [
         properties: {
           url: {
             type: 'string',
-            description: 'Raw URL to a SKILL.md file. GitHub example: https://raw.githubusercontent.com/openclaw/openclaw/main/.agents/github/SKILL.md',
+            description: 'Raw URL to a SKILL.md file.',
           },
           content: {
             type: 'string',
@@ -420,22 +426,25 @@ const TOOL_DEFINITIONS = [
     function: {
       name: 'create_mcp_server',
       description: [
-        'Create a new MCP server configuration.',
-        'Use this when user wants to connect to an external service (Monday, Slack, GitHub, etc.).',
-        'After creating, always call mcp_connect to discover available tools.',
-        'Monday.com example: url="https://mcp.monday.com/mcp", authType="bearer", authToken="<user_token>"',
+        'Register a new MCP server. For Monday.com use the official hosted MCP:',
+        'url: "https://mcp.monday.com/mcp", authType: "bearer", authToken: "<monday_api_token>".',
+        'Then call mcp_connect to authenticate and discover tools.',
+        'Monday MCP tools include: get_board_schema, get_board_items_by_name, create_item, delete_item,',
+        'change_item_column_values, move_item_to_group, create_update, create_board, create_group,',
+        'create_column, delete_column, list_users_and_teams.',
+        'After creating any MCP server, call mcp_connect to discover available tools.',
       ].join(' '),
       parameters: {
         type: 'object',
         properties: {
-          name: { type: 'string', description: 'Display name, e.g. "Monday.com"' },
-          url: { type: 'string', description: 'MCP server URL. Monday: https://mcp.monday.com/mcp' },
-          authType: { type: 'string', enum: ['bearer', 'api_key', 'basic', 'none'], description: 'Auth method. Monday uses "bearer"' },
-          authToken: { type: 'string', description: 'API token / Bearer token' },
+          name: { type: 'string', description: 'Display name, e.g. "Monday.com" or "GitHub"' },
+          url: { type: 'string', description: 'MCP server URL (NOT needed for Monday.com)' },
+          authType: { type: 'string', enum: ['bearer', 'api_key', 'basic', 'none'], description: 'Auth method' },
+          authToken: { type: 'string', description: 'API token. For Monday: paste token from monday.com > Profile > Developers > API' },
           description: { type: 'string', description: 'Optional description' },
-          type: { type: 'string', description: 'Provider type hint, e.g. "monday", "slack", "github", "custom"' },
+          type: { type: 'string', description: 'Provider type hint: "monday", "slack", "github", "custom"' },
         },
-        required: ['name', 'url'],
+        required: ['name'],
       },
     },
   },
@@ -443,7 +452,10 @@ const TOOL_DEFINITIONS = [
     type: 'function',
     function: {
       name: 'mcp_connect',
-      description: 'Connect to a configured MCP server and discover its available tools. Run after create_mcp_server.',
+      description: [
+        'Connect to a configured MCP server and discover its available tools.',
+        'Run after create_mcp_server. Works for Monday.com hosted MCP and all other MCP servers.',
+      ].join(' '),
       parameters: {
         type: 'object',
         properties: {
@@ -460,7 +472,7 @@ const TOOL_DEFINITIONS = [
       description: [
         'Call a tool on a connected MCP server.',
         'Use list_mcp_servers to see available servers and their tools.',
-        'Example: { server: "Monday.com", tool: "get_boards", args: {} }',
+        'For Monday.com: use mcp_call with the monday MCP server tools (get_board_schema, get_board_items_by_name, etc.).',
       ].join(' '),
       parameters: {
         type: 'object',
@@ -471,6 +483,15 @@ const TOOL_DEFINITIONS = [
         },
         required: ['server', 'tool'],
       },
+    },
+  },
+
+  {
+    type: 'function',
+    function: {
+      name: 'get_monday_token',
+      description: 'Get the saved Monday.com API token and ready-to-use Authorization headers. Call this FIRST before any Monday API http_request. Returns full token string + headers object. Never call create_mcp_server for Monday.',
+      parameters: { type: 'object', properties: {} },
     },
   },
 ];

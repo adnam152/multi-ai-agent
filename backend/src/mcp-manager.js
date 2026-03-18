@@ -1,14 +1,20 @@
 /**
  * mcp-manager.js — MCP server registry + client
  *
- * Supports MCP Streamable HTTP transport (2025-03-26 spec):
- *   Monday.com and other servers requiring Mcp-Session-Id
+ * Supports MCP Streamable HTTP transport (2025-03-26 spec).
+ *
+ * Monday.com uses the official Hosted MCP server at https://mcp.monday.com/mcp
+ * — it is a standard MCP server, no special-casing needed.
+ * Auth: Authorization: Bearer <token>  (standard bearer type)
+ * Available tools: get_board_schema, get_board_items_by_name, create_item,
+ *   delete_item, change_item_column_values, move_item_to_group, create_update,
+ *   create_board, create_group, create_column, delete_column, list_users_and_teams
  *
  * Flow:
- *   1. POST initialize → server returns Mcp-Session-Id in response header
- *   2. All subsequent requests include that Mcp-Session-Id header
- *   3. tools/list to discover available tools
- *   4. tools/call to invoke tools
+ *   1. create_mcp_server → register config
+ *   2. mcp_connect → initialize + capture Mcp-Session-Id + discover tools
+ *   3. mcp_call → invoke with EXACT tool name from step 2
+ *   4. Session auto-reconnects on 400/session-expired errors
  */
 
 const db = require('./db');
@@ -68,6 +74,16 @@ function getByName(name) {
     s.id === name
   );
 }
+function getMondayToken() {
+  // Find Monday.com config by URL or type/name hint
+  const s = servers.find(s =>
+    s.url?.includes('monday.com') ||
+    s.type === 'monday' ||
+    s.name?.toLowerCase().includes('monday')
+  );
+  return s?.authToken || null;
+}
+
 
 function create(data) {
   const existing = getByName(data.name);
@@ -77,7 +93,7 @@ function create(data) {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     name:        data.name,
     type:        data.type || 'custom',
-    url:         data.url,
+    url:         data.url || '',
     authType:    data.authType || 'bearer',
     authToken:   data.authToken || '',
     description: data.description || '',
@@ -111,7 +127,7 @@ function remove(id) {
   return true;
 }
 
-// ─── Headers ─────────────────────────────────────────────────────────────────
+// ─── Headers ──────────────────────────────────────────────────────────────────
 
 function buildHeaders(server, includeSession = true) {
   const h = {
@@ -135,7 +151,6 @@ function buildHeaders(server, includeSession = true) {
     }
   }
 
-  // Attach session ID if we have one (required by Monday and Streamable HTTP servers)
   if (includeSession && sessionIds.has(server.id)) {
     h['Mcp-Session-Id'] = sessionIds.get(server.id);
   }
@@ -158,7 +173,6 @@ async function rpcPost(server, method, params = {}, timeoutMs = 15000) {
     signal: AbortSignal.timeout(timeoutMs),
   });
 
-  // Capture session ID from response headers (Monday sets it here on initialize)
   const sessionId = res.headers.get('mcp-session-id') || res.headers.get('Mcp-Session-Id');
   if (sessionId) {
     sessionIds.set(server.id, sessionId);
@@ -171,7 +185,6 @@ async function rpcPost(server, method, params = {}, timeoutMs = 15000) {
   }
 
   const contentType = res.headers.get('content-type') || '';
-
   if (contentType.includes('text/event-stream')) {
     return readSSE(res, id);
   }
@@ -220,36 +233,28 @@ async function connect(id) {
   const server = getById(id);
   if (!server) throw new Error(`Server not found: ${id}`);
 
-  // Clear stale session
   sessionIds.delete(id);
-
   logger.info('mcp', `Connecting to "${server.name}"...`);
 
-  // Step 1: initialize — Monday returns Mcp-Session-Id in response headers here
   try {
     await rpcPost(server, 'initialize', {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
       clientInfo: { name: 'brain-os', version: '1.0' },
     }, 10000);
-
-    // Send notifications/initialized (required by spec, fire-and-forget)
     rpcPost(server, 'notifications/initialized', {}).catch(() => {});
-
     logger.debug('mcp', `${server.name}: initialize OK`);
   } catch (e) {
     logger.debug('mcp', `${server.name}: initialize: ${e.message.slice(0, 100)}`);
-    // Session ID may still have been captured even if response was non-200
   }
 
   logger.debug('mcp', `${server.name}: session ${sessionIds.has(id) ? 'active ✓' : 'not required'}`);
 
-  // Step 2: discover tools
   let tools = [];
   try {
     const result = await rpcPost(server, 'tools/list', {}, 10000);
     tools = (result?.tools || []).map(t => typeof t === 'string' ? t : (t.name || t));
-    logger.info('mcp', `${server.name}: ${tools.length} tools — ${tools.slice(0, 5).join(', ')}`);
+    logger.info('mcp', `${server.name}: ${tools.length} tools — ${tools.slice(0, 8).join(', ')}`);
   } catch (e) {
     logger.warn('mcp', `${server.name}: tools/list — ${e.message.slice(0, 120)}`);
   }
@@ -283,7 +288,6 @@ async function callTool({ serverId, serverName, toolName, args = {} }) {
 
   if (!server.enabled) return { error: `Server "${server.name}" is disabled.` };
 
-  // Auto-connect if no session
   if (!server.connected || !sessionIds.has(server.id)) {
     try {
       await connect(server.id);
@@ -298,7 +302,6 @@ async function callTool({ serverId, serverName, toolName, args = {} }) {
     const result = await rpcPost(server, 'tools/call', { name: toolName, arguments: args }, 20000);
     return { ok: true, server: server.name, tool: toolName, result };
   } catch (e) {
-    // Session expired — reconnect once and retry
     if (e.message.includes('400') || e.message.toLowerCase().includes('session')) {
       logger.info('mcp', `${server.name}: session expired, reconnecting...`);
       try {
@@ -326,7 +329,7 @@ function getMcpToolsSummary() {
 
 module.exports = {
   init: load,
-  getAll, getById, getByName,
+  getAll, getById, getByName, getMondayToken,
   create, update, remove,
   connect, disconnect, callTool,
   getMcpToolsSummary,

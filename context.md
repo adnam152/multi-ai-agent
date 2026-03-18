@@ -253,18 +253,64 @@ storeLesson() → recurrenceCount++ on duplicate trigger
 
 ## MCP Integration
 
-Supports MCP Streamable HTTP (2025-03-26 spec) — Monday.com and others requiring `Mcp-Session-Id`.
+### Two types of integrations
 
-### Flow:
-1. `create_mcp_server` → register config
-2. `mcp_connect` → initialize + capture session ID + discover tools
+#### 1. Monday.com — Direct HTTP API (NOT MCP)
+Monday.com uses its own GraphQL REST API, NOT the MCP protocol.
+Brain calls it directly via `http_request` tool.
+
+**Setup flow:**
+1. User saves Monday config in McpModal (type="monday", paste API token)
+2. Brain retrieves token via `list_mcp_servers` → `monday_integrations[0].required_headers`
+3. Brain calls `http_request` POST `https://api.monday.com/v2`
+
+**NEVER use `mcp_call` for Monday.com — it will return an error + redirect.**
+
+**Required headers:**
+```
+Authorization: <api_token>          ← NO "Bearer" prefix
+Content-Type: application/json
+API-Version: 2023-10
+```
+
+**Body format (always use variables, never inline):**
+```json
+{
+  "query": "query ($boardId: ID!) { boards(ids: [$boardId]) { groups { id title } } }",
+  "variables": { "boardId": "1234567890" }
+}
+```
+
+**Key rules:**
+- Board ID → always Int (pass as string in variables)
+- Group ID → always String (e.g. "topics", "group_abc123")
+- `column_values[].text` → human-readable, use as primary value
+- `column_values[].value` → raw JSON string, parse only if text is empty
+- `compare_value` in filters → always an array of strings
+
+**Workflow for fetching tasks:**
+1. GET groups (`boards > groups { id title }`) → find group_id
+2. GET columns (`boards > columns { id title type }`) → find column ids (optional, if needed for filter)
+3. GET users (`users { id name email }`) → find user ids (optional, if filtering by person)
+4. GET items with optional filter (`boards > groups > items_page(query_params: {...})`)
+
+---
+
+#### 2. Real MCP Servers — SSE/HTTP Protocol (GitHub, Asana, Slack, etc.)
+
+Supports MCP Streamable HTTP (2025-03-26 spec).
+
+**Flow:**
+1. `create_mcp_server` → register config (name, url, authToken)
+2. `mcp_connect` → initialize + capture Mcp-Session-Id + discover tools
 3. `mcp_call` → invoke with EXACT tool name from step 2
 4. Session auto-reconnects on 400/session-expired errors
 
-### CRITICAL rules (in BRAIN_SYSTEM):
+**CRITICAL rules (in BRAIN_SYSTEM):**
 - Sub-agents do NOT have `mcp_call` access — Brain calls it directly
 - NEVER guess tool names — use `list_mcp_servers` to get exact names
 - NEVER use `call_agent` for MCP tasks
+- Do NOT call `mcp_connect` for Monday.com
 
 ---
 

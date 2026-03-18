@@ -50,6 +50,7 @@ const TOOL_MODULES = {
   create_mcp_server: () => require('./mcp').create_mcp_server,
   mcp_connect: () => require('./mcp').mcp_connect,
   mcp_call: () => require('./mcp').mcp_call,
+  get_monday_token: () => require('./mcp').get_monday_token,
 };
 
 async function executeTool(toolCall) {
